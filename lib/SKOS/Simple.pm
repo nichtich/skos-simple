@@ -5,25 +5,28 @@ use warnings;
 
 =head1 NAME
 
-SKOS::Simple - SKOS without package dependencies
+SKOS::Simple - SKOS with entailment and without package dependencies
 
 =cut
 
 use Scalar::Util qw(blessed reftype);
 use Carp;
 
-our $VERSION = '0.0.1';
+our $VERSION = '0.0.2';
 
 =head1 DESCRIPTION
 
 This module provides a simple class to create and handle Simple Knowledge
 Organization Systems (thesauri, classifications, etc.) in SKOS. In contrast
 to most RDF-related modules, SKOS::Simple does not depend on any non-core 
-modules, so you can install it by just copying one file. On the other hand 
-the set of possible SKOS schemes, that can be handled by SKOS::Simple is 
-limited by some basic assumptions. The current version of this class is 
-optimized form creating and serializing SKOS schemes, but not for reading 
-and modifying them.
+modules, so you can install it by just copying one file. The module 
+implements basic entailment rules of the SKOS standard without the burden
+of a full RDF reasoning engine. For this reason the set of possible SKOS
+schemes, that can be handled by SKOS::Simple is limited by some basic 
+assumptions. 
+
+The current version of this class is optimized form creating and 
+serializing valid SKOS schemes, but not for reading and modifying them.
 
 =head1 ASSUMPTIONS
 
@@ -90,8 +93,8 @@ sub new {
 
     my $self = bless( { 
         concepts    => { },
-        topconcepts => { },
         related     => { },
+        top         => { }, # ids of top concepts
         hierarchy   => ($arg{hierarchy} || ""), # tree|multi|
         base        => ($arg{base} || ""),  # TODO: check URI
         title       => ($arg{title} || ""), # TODO: multilang ? 
@@ -148,6 +151,10 @@ sub add_concept {
     if (@label) {
         push @{ $concept->{label} }, @label; # TODO: uniq
     }
+
+    croak "concept <$id> cannot have broader if it is top concept!"
+        if ( @broader && $self->{top}->{$id} );
+
     foreach my $i (@related) { 
         next if $concept->{related}->{$i};
         $self->add_concept( related => $id, @reverse, $i ) unless $nocheck;
@@ -159,6 +166,7 @@ sub add_concept {
             croak "tree property violated by <$id> skos:broader <$i>"
                 if %{$concept->{broader}};
         } # TODO: if 'multi[tree]': detect loops
+        
         $self->add_concept( narrower => $id, @reverse, $i ) unless $nocheck;
         $concept->{broader}->{$i} = 1;
     }
@@ -169,12 +177,78 @@ sub add_concept {
     }
 }
 
+=head2 top_concepts ( [ @ids ] )
+
+Marks one or more concepts as top concepts. The given concepts must 
+already exist and must not have any broader concepts. Without parameters, 
+this methods returns a list of all top concept identifiers. Unless you
+explicitly specify top concepts, this is the list of all concepts
+without broader concepts. As soon as you explicitly set some top
+concepts, these will be the I<only> top concepts. You can reset the 
+top concepts to all concepts without broader concepts, provide C<undef>
+as only argument.
+
+=cut
+
+sub top_concepts {
+    my $self = shift;
+    unless ( @_ ) {
+        return keys %{ $self->{top} } if %{ $self->{top} };
+        return grep { 
+            not %{$self->{concepts}->{$_}->{broader}}
+        } keys %{$self->{concepts}};
+    }
+    if ( @_ == 1 && not defined $_[0] ) {
+        $self->{top} = { };
+        return;
+    }
+    foreach my $id ( @_ ) {
+        croak "Unknown concept <$id>" unless $self->{concepts}->{$id};
+        next if $self->{top}->{$id};
+        croak "Concept <$id> must not have broader to be top concept"
+            if keys %{ $self->{concepts}->{broader} };
+        $self->{top}->{$id} = 1;
+    }
+}
+
+=head2 has_concept ( $id )
+
+Returns whether there is a concept of the given id.
+
+=cut
+
+sub has_concept {
+    my $self = shift;
+    my %arg = (@_ == 1) ? ( id => $_[0] ) : @_;
+    return exists $self->{concepts}->{ $arg{id} }
+        if defined $arg{id};
+    # TODO: ask by other properties (URI, broader, narrower, is-top, etc.)
+    return 0;
+}
+
+=head2 size
+
+Returns the number of concepts.
+
+=cut
+
+sub size {
+    my $self = shift;
+    return scalar keys %{$self->{concepts}};
+}
+
+=head2 concept_as_turtle ( $id )
+
+Returns a concept in Turtle syntax. Namespace declarations are not included.
+
+=cut
+
 sub concept_as_turtle {
     my ($self,$id) = @_;
 
     my $c = $self->{concepts}->{$id};
 
-    my %stm = ( 'a' => 'skos:ConceptScheme' );
+    my %stm = ( 'a' => 'skos:Concept' );
 
     # TODO: multiple
     if ($c->{notation}) {
@@ -192,6 +266,10 @@ sub concept_as_turtle {
         $stm{"skos:$rel"} = [ map { "<$_>" } keys %{$c->{$rel}} ];
     }
 
+    if ( (keys %{ $self->{top} }) ? $self->{top}->{$id} : not %{$c->{broader}} ) {
+        $stm{"skos:topConceptOf"} = "<>";
+    }
+
     return $self->turtle_statement( "<$id>", %stm );
 }
 
@@ -203,10 +281,7 @@ sub scheme_as_turtle {
     $stm{'dc:title'} = $self->turtle_literal( $self->{title} )
         unless $self->{title} eq '';
 
-    my @top = grep { 
-        not %{$self->{concepts}->{$_}->{broader}}
-    } keys %{$self->{concepts}};
-
+    my @top = $self->top_concepts();
     $stm{'skos:hasTopConcept'} = [ map { "<$_>" } @top ];
 
     return $self->turtle_statement( "<>", %stm );
@@ -214,7 +289,9 @@ sub scheme_as_turtle {
 
 sub as_turtle {
     my $self = shift;
-    return $self->concept_as_turtle( @_ ) if @_;
+
+    # TODO: add 'lean' and 'non-pretty' serialization mode
+    # return $self->concept_as_turtle( @_ ) if @_;
 
     my @lines;
 
@@ -270,6 +347,7 @@ Escapes a string as literal in Turtle syntax.
 sub turtle_literal {
     shift if blessed($_[0]);
     my $value = shift;
+    return "" if not defined $value or $value eq '';
     # TODO: datatype or language tag
     my %ESCAPED = ( "\t" => 't', "\n" => 'n', 
         "\r" => 'r', "\"" => '"', "\\" => '\\' );
@@ -278,6 +356,12 @@ sub turtle_literal {
 }
 
 1;
+
+=head1 SEE ALSO
+
+The SKOS ontology and its semantics is defined in 
+L<http://www.w3.org/TR/skos-primer> and 
+L<http://www.w3.org/TR/skos-reference>.
 
 =head1 AUTHOR
 
@@ -294,3 +378,4 @@ your option, any later version of Perl 5 you may have available.
 In addition you may fork this library under the terms of the 
 GNU Affero General Public License.
 
+=cut
