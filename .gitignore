@@ -1,0 +1,17 @@
+# temp files
+*~
+*.bak
+
+# Makefile etc.
+Makefile
+Makefile.old
+Build
+blib
+pm_to_blib
+_build
+
+# distributions
+MYMETA.yml
+MANIFEST
+*.gz
+

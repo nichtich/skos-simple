@@ -1,0 +1,45 @@
+NAME
+    SKOS::Simple - Simple SKOS without package dependencies
+
+DESCRIPTION
+    This Perl 5 module provides a class to create and manage SKOS data.
+
+INSTALLATION
+    You can get the latest development version from github at
+      http://github.com/nichtich/skos-simple. 
+
+    The core of this module is just one file Simple.pm, located in
+    lib/SKOS/. Feel free to copy and rename it as you like. For 
+    instance if you put Simple.pm in the same directory as your 
+    script, you can include it via the following statement:
+
+      require 'Simple.pm';
+
+    To not clutter your system with several copies of the file, you
+    should better cleanly install the module. To do so from source:
+
+    $ perl Build.PL
+    $ ./Build test
+    $ ./Build install # if you are root
+
+    You can then use SKOS::Simple in your scripts like other modules:
+
+      use SKOS::Simple;
+
+BUGS
+    Please report any bugs or feature requests to
+
+    http://github.com/nichtich/skos-simple/issues
+
+    Thank you!   
+
+AUTHOR
+    Jakob Voss <jakob.voss@gbv.de>
+
+LICENSE
+    This library is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself, either Perl version 5.8.8 or, at
+    your option, any later version of Perl 5 you may have available.
+
+    In addition you may fork this library under the terms of the 
+    GNU Affero General Public License.
