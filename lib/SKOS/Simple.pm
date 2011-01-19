@@ -19,37 +19,64 @@ our $VERSION = '0.0.1';
 This module provides a simple class to create and handle Simple Knowledge
 Organization Systems (thesauri, classifications, etc.) in SKOS. In contrast
 to most RDF-related modules, SKOS::Simple does not depend on any non-core 
-modules. On the other hand the set of possible SKOS schemes is limited by 
-some assumptions based on best-practice rules. The current version of this
-class is optimized form creating and serializing SKOS schemes, but not for
-reading and modifying.
-
-=cut
+modules, so you can install it by just copying one file. On the other hand 
+the set of possible SKOS schemes, that can be handled by SKOS::Simple is 
+limited by some basic assumptions. The current version of this class is 
+optimized form creating and serializing SKOS schemes, but not for reading 
+and modifying them.
 
 =head1 ASSUMPTIONS
+
+An instance of SKOS::Simple holds exactely one skos:ConceptScheme with
+the following properties:
 
 =over 4
 
 =item 
 
-All concepts share a common URI prefix, which is the 
-URI of the concept scheme.
+The URI of the concept scheme is also the common URI prefix of all its
+concepts. If your scheme has URI C<http://example.org/>, your concept
+URIs must also start with this string.
 
 =item
 
-All empty strings are ignored.
+All concepts must be identifyable by a unique string, that is refered
+to as the concept identifier. The URI of a concept is build of the
+common URI prefix and the concept's identifier. The identifier must
+either be the skos:notation (so every concept must have one), or the
+skos:prefLabel in one fixed language for all concepts.
 
 =item
 
-All notations have the same Datatype URI.
+Empty strings as literal values are ignored. In most cases you can use
+C<undef> and C<""> interchangeably.
 
 =item
 
-...
+All notations have the same Datatype URI (this may be changed).
+
+=item
+
+...sure there are some more limitations...
 
 =back
 
+=head1 USAGE
+
+  ...
+
+To append additional RDF data, you can use the Turtle 
+L<serializing functions|/FUNCTIONS>:
+
+  ...
+
 =cut
+
+use base 'Exporter';
+our %EXPORT_TAGS = ( turtle => [qw(turtle_literal turtle_statement)] );
+our @EXPORT_OK = @{$EXPORT_TAGS{turtle}};
+
+=head1 METHODS
 
 =head2 new( [ %properties ] )
 
@@ -65,9 +92,9 @@ sub new {
         concepts    => { },
         topconcepts => { },
         related     => { },
-        hierarchy   => ($arg{hierarchy} || ""), # tree|multi
-        base        => ($arg{base} || ""),
-        title       => ($arg{title} || ""), # TODO: multilang 
+        hierarchy   => ($arg{hierarchy} || ""), # tree|multi|
+        base        => ($arg{base} || ""),  # TODO: check URI
+        title       => ($arg{title} || ""), # TODO: multilang ? 
         namespaces  => ($arg{namespaces} || { }), 
     }, $class );
 
@@ -147,43 +174,42 @@ sub concept_as_turtle {
 
     my $c = $self->{concepts}->{$id};
 
-    my @stm = ("a skos:Concept");
+    my %stm = ( 'a' => 'skos:ConceptScheme' );
 
     # TODO: multiple
     if ($c->{notation}) {
-        push @stm, "skos:notation " . $self->turtle_literal( $c->{notation}->[0] );
+        $stm{'skos:notation'} = $self->turtle_literal( $c->{notation}->[0] );
     }
 
     # TODO: prefLabel
 
     if ($c->{label}) {
-        push @stm, "dc:title " . $self->turtle_literal( $c->{label}->[0] );
+        $stm{'dc:title'} = $self->turtle_literal( $c->{label}->[0] );
     }
 
     foreach my $rel (qw(broader narrower related)) {
         next unless %{$c->{$rel}};
-        push @stm, "skos:$rel " 
-                   . join(", ", map { "<$_>" } keys %{$c->{$rel}});
+        $stm{"skos:$rel"} = [ map { "<$_>" } keys %{$c->{$rel}} ];
     }
 
-    return $self->turtle_statements( "<$id>", @stm );
+    return $self->turtle_statement( "<$id>", %stm );
 }
 
 sub scheme_as_turtle {
     my $self = shift;
-    my @stm = ("a skos:ConceptScheme");
+
+    my %stm = ( 'a' => 'skos:ConceptScheme' );
    
-    push @stm, "dc:title " . $self->turtle_literal( $self->{title} )
+    $stm{'dc:title'} = $self->turtle_literal( $self->{title} )
         unless $self->{title} eq '';
 
     my @top = grep { 
         not %{$self->{concepts}->{$_}->{broader}}
     } keys %{$self->{concepts}};
 
-    push @stm, "skos:hasTopConcept " 
-               . join(", ", map { "<$_>" } @top) if @top;
+    $stm{'skos:hasTopConcept'} = [ map { "<$_>" } @top ];
 
-    return $self->turtle_statements( "<>", @stm );
+    return $self->turtle_statement( "<>", %stm );
 }
 
 sub as_turtle {
@@ -207,16 +233,37 @@ sub as_turtle {
     return join("\n", @lines);
 }
 
+=head1 FUNCTIONS
 
-sub turtle_statements {
-    my ($self, $subject, @statements) = @_;
-    return '' unless @statements;
-    return "$subject " . join(" ;\n" , map { "    $_" } @statements) . " .\n";
+The following methods can also be used as functions to serialize RDF/Turtle.
+
+=head2 turtle_statement ( $subject, $predicate => $object [, ... ] )
+
+Returns a (set of) RDF statements in Turtle syntax. Subject and predicate
+parameters must be strings. Object parameters must either be strings or
+arrays of strings. This function does not check or validate parameter
+values - all strings must be valid parts of Turtle syntax!
+
+=cut
+
+sub turtle_statement {
+    shift if blessed($_[0]);
+    my ($subject, %statements) = @_;
+
+    my @s = grep { defined $_ } map {
+        my ($p,$o) = ($_,$statements{$_});
+        $o = join(", ", @$o) if ref($o);
+        (defined $o and $o ne '') ? "$p $o" : undef;
+    } keys %statements;
+
+    return "" unless @s;
+
+    return "$subject " . join(" ;\n" , shift @s, map { "    $_" } @s) . " .\n";
 }
 
 =head2 turtle_literal ( $string )
 
-Escapes a string as literal in Turtle format.
+Escapes a string as literal in Turtle syntax.
 
 =cut
 

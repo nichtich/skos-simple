@@ -13,3 +13,5 @@ $ttl =~ s/^\s+|\s+$//g;
 
 is( $ttl, '@prefix skos: <http://www.w3.org/2008/05/skos#> . <> a skos:ConceptScheme .' );
 
+
+ 
