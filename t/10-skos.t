@@ -1,13 +1,13 @@
 #!perl -T
 
-use Test::More tests => 10;
+use Test::More tests => 12;
 
 use_ok( 'SKOS::Simple' );
 
 my $skos = SKOS::Simple->new;
 isa_ok( $skos, 'SKOS::Simple' );
 
-my $ttl = $skos->as_turtle;
+my $ttl = $skos->turtle;
 $ttl =~ s/\s+|\n/ /g;
 $ttl =~ s/^\s+|\s+$//g;
 
@@ -27,4 +27,17 @@ is_deeply( [ $skos->top_concepts ], ['x'], 'top concept' );
 $skos->add_concept( notation => 'x', broader => 'y' );
 is( $skos->size, 2, 'second concept' );
 is_deeply( [ $skos->top_concepts ], ['y'], 'top concept' );
+
+is( $skos->turtle_scheme, 
+    "<> a skos:ConceptScheme ;\n    skos:hasTopConcept <y> .\n", "full scheme" );
+
+is( $skos->turtle_scheme( top => 0 ), 
+    "<> a skos:ConceptScheme .\n", "lean scheme" );
+
+$skos = SKOS::Simple->new( language => 'de' );
+$skos->add_concept( notation => 'x', scopeNote => 'test' );
+
+# print $skos->turtle_concept('x', top => 0);
+# use Data::Dumper;
+# print Dumper($skos);
 

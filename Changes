@@ -2,6 +2,9 @@ Revision history for Perl package SKOS::Simple
 ==============================================
 Revision published at CPAN are marked by '*'.
 
+0.0.4 2011-01-20
+    - more Turtle serialization
+
 0.0.1 2011-01-19
     - first draft
 

@@ -12,7 +12,7 @@ SKOS::Simple - SKOS with entailment and without package dependencies
 use Scalar::Util qw(blessed reftype);
 use Carp;
 
-our $VERSION = '0.0.2';
+our $VERSION = '0.0.4';
 
 =head1 DESCRIPTION
 
@@ -21,12 +21,24 @@ Organization Systems (thesauri, classifications, etc.) in SKOS. In contrast
 to most RDF-related modules, SKOS::Simple does not depend on any non-core 
 modules, so you can install it by just copying one file. The module 
 implements basic entailment rules of the SKOS standard without the burden
-of a full RDF reasoning engine. For this reason the set of possible SKOS
-schemes, that can be handled by SKOS::Simple is limited by some basic 
+of a full RDF reasoning engine (actually this module internally does not 
+use RDF, which is overrated anyway). For this reason the set of possible 
+SKOS schemes, that can be handled by SKOS::Simple is limited by some basic 
 assumptions. 
 
 The current version of this class is optimized form creating and 
 serializing valid SKOS schemes, but not for reading and modifying them.
+A common use case of SKOS::Simple is to transform a given terminology
+from some custom format to SKOS, which is then 
+L<serialized|/"SERIALIZATION METHODS"> in Terse RDF Triple language
+(Turtle). You can then publish the Turtle data
+and/or process them with general RDF and SKOS tools.
+
+=head1 CURRENT STATE
+
+The current version of this module aims B<at classifications only>! 
+Support for thesauri will be implemented later (or just write your 
+own patch and send me for inclusion in SKOS::Simple).
 
 =head1 ASSUMPTIONS
 
@@ -66,24 +78,62 @@ All notations have the same Datatype URI (this may be changed).
 
 =head1 USAGE
 
-  ...
+  my $skos = SKOS::Simple->new( 
+      base => 'http://example.com/mykos/',
+      title => 'My little Knowledge Organization System' 
+  );
 
-To append additional RDF data, you can use the Turtle 
-L<serializing functions|/FUNCTIONS>:
+  ....
 
-  ...
+  print $skos->turtle;
+
+SKOS::Simple only supports a limited set of possible RDF statements.
+To add more RDF data, you can use the L<serializing functions|/FUNCTIONS>:
+
+  use SKOS::Simple qw(:turtle);
+
+  print $skos->turtle_namespaces 
+      . $skos->turtle_base;       # unless you already used $skos->turtle
+  
+  .... 
 
 =cut
 
 use base 'Exporter';
-our %EXPORT_TAGS = ( turtle => [qw(turtle_literal turtle_statement)] );
+our %EXPORT_TAGS = ( 
+    turtle => [qw(turtle_literal turtle_statement turtle_uri)] 
+);
 our @EXPORT_OK = @{$EXPORT_TAGS{turtle}};
+
+our %NAMESPACES = (
+   skos => 'http://www.w3.org/2008/05/skos#',
+#   xsd  => 'http://www.w3.org/2001/XMLSchema#',
+   dc   => 'http://purl.org/dc/elements/1.1/',
+#   dct  => 'http://purl.org/dc/terms/',
+#   foaf => 'http://xmlns.com/foaf/0.1/',
+);
 
 =head1 METHODS
 
 =head2 new( [ %properties ] )
 
 Creates a new concept scheme with some given properties.
+
+=over 4
+
+=item base
+
+=item namespaces
+
+=item title
+
+=item description
+
+=item language
+
+=item hierarchy
+
+=back
 
 =cut
 
@@ -98,11 +148,16 @@ sub new {
         hierarchy   => ($arg{hierarchy} || ""), # tree|multi|
         base        => ($arg{base} || ""),  # TODO: check URI
         title       => ($arg{title} || ""), # TODO: multilang ? 
-        namespaces  => ($arg{namespaces} || { }), 
+        namespaces  => ($arg{namespaces} || { }), # TODO: count usage 
+        language    => ($arg{language} || ""),    # TODO
+        description => ($arg{description} || ""), # TODO
     }, $class );
 
-    $self->{namespaces}->{skos} = 'http://www.w3.org/2008/05/skos#'
+    $self->{namespaces}->{skos} = $NAMESPACES{skos}
         unless $self->{namespaces}->{skos};
+
+    $self->{namespaces}->{dc} = $NAMESPACES{dc}
+        if ( ($self->{title} || $self->{description}) && not $self->{namespaces}->{dc});
 
     return $self;
 }
@@ -128,6 +183,7 @@ sub add_concept {
     my $nocheck   = $arg{_nocheck};
     my @notation  = _values( $arg{notation} );
     my @label     = _values( $arg{label} );
+    my @scopeNote = _values( $arg{scopeNote} );
     my @related   = _values( $arg{related} );
     my @broader   = _values( $arg{broader} );
     my @narrower  = _values( $arg{narrower} );
@@ -137,11 +193,12 @@ sub add_concept {
     my @reverse = ( _nocheck => 1, 'notation' );
 
     $self->{concepts}->{$id} = { 
-        notation => [ ],
-        label    => [ ],
-        broader  => { },
-        narrower => { },
-        related  => { }
+        notation  => [ ],
+        label     => [ ],
+        scopeNote => [ ],
+        broader   => { },
+        narrower  => { },
+        related   => { }
     } unless $self->{concepts}->{$id};
     my $concept = $self->{concepts}->{$id};
 
@@ -150,6 +207,12 @@ sub add_concept {
     }
     if (@label) {
         push @{ $concept->{label} }, @label; # TODO: uniq
+    }
+
+    if (@scopeNote) {
+        push @{ $concept->{scopeNote} }, @scopeNote;
+        # TODO: add [default] language
+        # TODO: entails skos:note
     }
 
     croak "concept <$id> cannot have broader if it is top concept!"
@@ -234,23 +297,132 @@ Returns the number of concepts.
 
 sub size {
     my $self = shift;
-    return scalar keys %{$self->{concepts}};
+    return scalar keys %{ $self->{concepts} };
 }
 
-=head2 concept_as_turtle ( $id )
+=head2 concepts
 
-Returns a concept in Turtle syntax. Namespace declarations are not included.
+Returns a list of all concept's ids.
 
 =cut
 
-sub concept_as_turtle {
-    my ($self,$id) = @_;
+sub concepts {
+    my $self = shift;
+    return keys %{ $self->{concepts} };
+}
+
+=head1 SERIALIZATION METHODS
+
+The following methods serialize the concept scheme or parts of it in 
+L<Terse RDF Triple language|http://www.w3.org/TeamSubmission/turtle/>
+(RDF/Turtle). A valid serialization must start with some namespace
+declarations, and a base declaration. Both are only included by the
+C<turtle> method, but they can also be requested independently.
+All return values end with a newline unless they are the empty string.
+
+A later version may also support 'hashref' format for serializing.
+
+=head2 turtle ( [ lean => 1 ] )
+
+Returns a full Turtle serialization of this concept scheme.
+The return value is equivalent to:
+
+    $skos->turtle_namespaces .
+    $skos->turtle_base .
+    $skos->turtle_scheme .
+    $skos->turtle_concepts
+
+The parameter C<lean> enables a lean serialization that does
+not include infereable RDF statements.
+
+=cut
+
+sub turtle {
+    my ($self,%opt) = @_;
+
+    my ($top,$lean) = $opt{lean} ? (0,1) : (1,0);
+
+    return 
+        $self->turtle_namespaces .
+        $self->turtle_base .
+        $self->turtle_scheme( top => $top ) .
+        $self->turtle_concepts( lean => $lean );
+
+}
+
+=head2 turtle_namespaces
+
+Returns Turtle syntax namespace declarations for this scheme.
+
+=cut
+
+sub turtle_namespaces {
+    my $self = shift;
+   
+    my @lines;
+    foreach my $name (keys %{$self->{namespaces}}) {
+        push @lines, "\@prefix $name: <" . $self->{namespaces}->{$name} . "> .";        
+    }
+
+    return join("\n", @lines) . "\n";
+}
+
+=head2 turtle_base
+
+Returns a Turtle URI base declaration for this scheme.
+An empty string is returned if no URI base is set.
+
+=cut
+
+sub turtle_base {
+    my $self = shift;
+
+    return "" if $self->{base} eq "";
+    return "\@base <" . $self->{base} . "> .\n" 
+}
+
+
+=head2 turtle_scheme ( [ top => 0 ] )
+
+Returns RDF statements about the concept scheme in Turtle syntax.
+Details about concepts or namespace/base declarations are not included.
+The parameter C<top> (enabled by default) can be used to supress 
+serializing the C<skos:hasTopConcept> property.
+
+=cut
+
+sub turtle_scheme {
+    my ($self,%opt) = @_;
+    $opt{top} = 1 unless exists $opt{top};
+
+    my %stm = ( 'a' => 'skos:ConceptScheme' );
+   
+    $stm{'dc:title'} = $self->turtle_literal( $self->{title} )
+        unless $self->{title} eq '';
+
+    if ( $opt{top} ) { 
+        my @top = $self->top_concepts();
+        $stm{'skos:hasTopConcept'} = [ map { "<$_>" } @top ];
+    }
+
+    return $self->turtle_statement( "<>", %stm );
+}
+
+=head2 turtle_concept ( $id [, %options ] )
+
+Returns a concept in Turtle syntax.
+
+=cut
+
+sub turtle_concept {
+    my ($self,$id,%opt) = @_;
+    $opt{top} = 1 unless exists $opt{top};
 
     my $c = $self->{concepts}->{$id};
 
     my %stm = ( 'a' => 'skos:Concept' );
 
-    # TODO: multiple
+    # TODO: multiple notations
     if ($c->{notation}) {
         $stm{'skos:notation'} = $self->turtle_literal( $c->{notation}->[0] );
     }
@@ -266,53 +438,38 @@ sub concept_as_turtle {
         $stm{"skos:$rel"} = [ map { "<$_>" } keys %{$c->{$rel}} ];
     }
 
-    if ( (keys %{ $self->{top} }) ? $self->{top}->{$id} : not %{$c->{broader}} ) {
-        $stm{"skos:topConceptOf"} = "<>";
+    $stm{'skos:scopeNote'} = [ 
+        map { $self->turtle_literal( $_ ) } @{ $c->{scopeNote} } 
+    ];
+
+    if ( $opt{top} ) { 
+        if ( (keys %{ $self->{top} }) ? $self->{top}->{$id} : not %{$c->{broader}} ) {
+            $stm{"skos:topConceptOf"} = "<>";
+        }
     }
+
+    # TODO: add skos:inScheme (if wanted)
 
     return $self->turtle_statement( "<$id>", %stm );
 }
 
-sub scheme_as_turtle {
+=head2 turtle_concepts
+
+Returns all concepts in Turtle syntax.
+
+=cut
+
+sub turtle_concepts {
     my $self = shift;
 
-    my %stm = ( 'a' => 'skos:ConceptScheme' );
-   
-    $stm{'dc:title'} = $self->turtle_literal( $self->{title} )
-        unless $self->{title} eq '';
-
-    my @top = $self->top_concepts();
-    $stm{'skos:hasTopConcept'} = [ map { "<$_>" } @top ];
-
-    return $self->turtle_statement( "<>", %stm );
-}
-
-sub as_turtle {
-    my $self = shift;
-
-    # TODO: add 'lean' and 'non-pretty' serialization mode
-    # return $self->concept_as_turtle( @_ ) if @_;
-
-    my @lines;
-
-    foreach my $name (keys %{$self->{namespaces}}) {
-        push @lines, "\@prefix $name: <" . $self->{namespaces}->{$name} . "> .";        
-    }
-    push @lines, "\@base <" . $self->{base} . "> ." if $self->{base};
-    push @lines, "" if @lines;
-
-    push @lines, $self->scheme_as_turtle;
-
-    foreach my $key (keys %{$self->{concepts}}) {
-        push @lines, $self->concept_as_turtle( $key );
-    }
-
-    return join("\n", @lines);
+    return join( "\n", 
+        map { $self->turtle_concept($_) } 
+        keys %{ $self->{concepts} } );
 }
 
 =head1 FUNCTIONS
 
-The following methods can also be used as functions to serialize RDF/Turtle.
+The following methods can also be used as functions for Turtle serialization.
 
 =head2 turtle_statement ( $subject, $predicate => $object [, ... ] )
 
@@ -353,6 +510,18 @@ sub turtle_literal {
         "\r" => 'r', "\"" => '"', "\\" => '\\' );
     $value =~ s/([\t\n\r\"\\])/\\$ESCAPED{$1}/sg;
     return "\"$value\"";
+}
+
+=head2 turtle_uri ( $uri )
+
+...
+
+=cut
+
+sub turtle_uri {
+    shift if blessed($_[0]);
+    my $value = shift;
+    return "<$value>"; # TODO: check uri?
 }
 
 1;
