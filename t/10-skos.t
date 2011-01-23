@@ -1,6 +1,6 @@
 #!perl -T
 
-use Test::More tests => 12;
+use Test::More tests => 21;
 
 use_ok( 'SKOS::Simple' );
 
@@ -31,8 +31,33 @@ is_deeply( [ $skos->top_concepts ], ['y'], 'top concept' );
 is( $skos->turtle_scheme, 
     "<> a skos:ConceptScheme ;\n    skos:hasTopConcept <y> .\n", "full scheme" );
 
-is( $skos->turtle_scheme( top => 0 ), 
-    "<> a skos:ConceptScheme .\n", "lean scheme" );
+my %schemeuris = (
+    'http://example.com' => '', '' => '',
+    'http://example.org' => 'http://example.org'
+);
+my ($s1,$s2) = (undef,'');
+do {
+    $skos = SKOS::Simple->new( base => 'http://example.com', scheme => $s1 );
+    is( $skos->turtle_scheme( top => 0 ), "<$s2> a skos:ConceptScheme .\n", "lean scheme" );
+} while ( ($s1,$s2) = each(%schemeuris) );
+
+$skos = SKOS::Simple->new( base => 'http://example.org/' );
+$skos->add_concept( notation => '123' );
+$ttl = $skos->turtle_concepts( scheme => 1 );
+ok( $ttl =~ /skos:topConceptOf/ and not $ttl =~ /skos:inScheme/ );
+$ttl = $skos->turtle_concepts( top => 0 );
+ok( not $ttl =~ /skos:topConceptOf/ and $ttl =~ /skos:inScheme/ );
+$ttl = $skos->turtle_concepts( top => 0, scheme => 0 );
+ok( not $ttl =~ /skos:topConceptOf/ and not $ttl =~ /skos:inScheme/ );
+$ttl = $skos->turtle_concepts( scheme => 2 );
+ok( $ttl =~ /skos:topConceptOf/ and $ttl =~ /skos:inScheme/ );
+
+is( $skos->turtle_concepts( lean => 1 ), $skos->turtle_concepts( top => 0, scheme => 1 ) );
+
+$skos->add_concept( notation => '456', broader => '123' );
+$ttl = $skos->turtle_concepts();
+ok( $ttl =~ /skos:topConceptOf/ and $ttl =~ /skos:inScheme/ );
+
 
 $skos = SKOS::Simple->new( language => 'de' );
 $skos->add_concept( notation => 'x', scopeNote => 'test' );

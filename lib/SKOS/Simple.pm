@@ -12,7 +12,7 @@ SKOS::Simple - SKOS with entailment and without package dependencies
 use Scalar::Util qw(blessed reftype);
 use Carp;
 
-our $VERSION = '0.0.4';
+our $VERSION = '0.0.5';
 
 =head1 DESCRIPTION
 
@@ -49,9 +49,8 @@ the following properties:
 
 =item 
 
-The URI of the concept scheme is also the common URI prefix of all its
-concepts. If your scheme has URI C<http://example.org/>, your concept
-URIs must also start with this string.
+All concepts share a common URI base. By default this common prefix is
+also the URI of the concept scheme as whole.
 
 =item
 
@@ -123,6 +122,14 @@ Creates a new concept scheme with some given properties.
 
 =item base
 
+The URI prefix that is used for all concepts.
+This property is required.
+
+=item scheme
+
+The URI of the whole concept scheme (C<skos:conceptScheme>).
+By default the C<base> property is used as concept scheme URI.
+
 =item namespaces
 
 =item title
@@ -146,12 +153,24 @@ sub new {
         related     => { },
         top         => { }, # ids of top concepts
         hierarchy   => ($arg{hierarchy} || ""), # tree|multi|
-        base        => ($arg{base} || ""),  # TODO: check URI
+        base        => ($arg{base} || ""),  # TODO: check URI and croak if missing
+        scheme      => ($arg{scheme} || ""),
         title       => ($arg{title} || ""), # TODO: multilang ? 
         namespaces  => ($arg{namespaces} || { }), # TODO: count usage 
         language    => ($arg{language} || ""),    # TODO
         description => ($arg{description} || ""), # TODO
     }, $class );
+
+    if ( $self->{scheme} eq $self->{base} ) {
+        $self->{scheme} = "";
+    } elsif ( $self->{scheme} ne "" ) {
+        # TODO: croak if no valid URI
+    }
+
+    my $scheme = $self->{scheme};
+    $scheme = "" if $scheme eq $self->{base};
+        my $suri = $self->{scheme};
+        $suri = "" if $suri eq $self->{base};
 
     $self->{namespaces}->{skos} = $NAMESPACES{skos}
         unless $self->{namespaces}->{skos};
@@ -322,7 +341,7 @@ All return values end with a newline unless they are the empty string.
 
 A later version may also support 'hashref' format for serializing.
 
-=head2 turtle ( [ lean => 1 ] )
+=head2 turtle ( [ %options ] )
 
 Returns a full Turtle serialization of this concept scheme.
 The return value is equivalent to:
@@ -332,22 +351,20 @@ The return value is equivalent to:
     $skos->turtle_scheme .
     $skos->turtle_concepts
 
-The parameter C<lean> enables a lean serialization that does
-not include infereable RDF statements.
+The parameter C<< lean => 1 >> enables a lean serialization, which 
+does not include infereable RDF statements. Other parameters are
+passed to C<turtle_scheme> and C<turtle_concepts> as well.
 
 =cut
 
 sub turtle {
     my ($self,%opt) = @_;
 
-    my ($top,$lean) = $opt{lean} ? (0,1) : (1,0);
-
     return 
         $self->turtle_namespaces .
         $self->turtle_base .
-        $self->turtle_scheme( top => $top ) .
-        $self->turtle_concepts( lean => $lean );
-
+        $self->turtle_scheme( %opt ) .
+        $self->turtle_concepts( %opt );
 }
 
 =head2 turtle_namespaces
@@ -386,7 +403,7 @@ sub turtle_base {
 
 Returns RDF statements about the concept scheme in Turtle syntax.
 Details about concepts or namespace/base declarations are not included.
-The parameter C<top> (enabled by default) can be used to supress 
+The option C<< top => 0 >> (enabled by default) can be used to supress 
 serializing the C<skos:hasTopConcept> property.
 
 =cut
@@ -400,23 +417,32 @@ sub turtle_scheme {
     $stm{'dc:title'} = $self->turtle_literal( $self->{title} )
         unless $self->{title} eq '';
 
+    # note that lean => 1 does not imply top => 0 !
     if ( $opt{top} ) { 
         my @top = $self->top_concepts();
         $stm{'skos:hasTopConcept'} = [ map { "<$_>" } @top ];
     }
 
-    return $self->turtle_statement( "<>", %stm );
+    return $self->turtle_statement( "<" . $self->{scheme} . ">", %stm );
 }
 
 =head2 turtle_concept ( $id [, %options ] )
 
-Returns a concept in Turtle syntax.
+Returns a concept in Turtle syntax. With option C<< top => 0 >> you can disable
+serializing the C<skos:topConceptOf> property. By default, each concept is
+connected to its concept scheme with either C<skos:topConceptOf>, or with
+C<skos:inScheme>. With option C<< scheme => 0 >> you can disable serializing
+the latter property. With C<< scheme => 2 >> the property C<skos:inScheme>
+is also included in the serialization if C<skos:topConceptOf> is given,
+although the former can be derived as super-property of the latter.
 
 =cut
 
 sub turtle_concept {
     my ($self,$id,%opt) = @_;
     $opt{top} = 1 unless exists $opt{top};
+    $opt{top} = 0 if $opt{lean};
+    $opt{scheme} = 1 unless exists $opt{scheme};
 
     my $c = $self->{concepts}->{$id};
 
@@ -442,28 +468,33 @@ sub turtle_concept {
         map { $self->turtle_literal( $_ ) } @{ $c->{scopeNote} } 
     ];
 
+    my $is_top = 0;
     if ( $opt{top} ) { 
         if ( (keys %{ $self->{top} }) ? $self->{top}->{$id} : not %{$c->{broader}} ) {
-            $stm{"skos:topConceptOf"} = "<>";
+            $stm{"skos:topConceptOf"} = "<" . $self->{scheme} . ">";
+            $is_top = 1;
         }
     }
 
-    # TODO: add skos:inScheme (if wanted)
+    if ( $opt{scheme} - $is_top > 0 ) {
+        $stm{'skos:inScheme'} = '<' . $self->{scheme} . '>';
+    }
 
     return $self->turtle_statement( "<$id>", %stm );
 }
 
-=head2 turtle_concepts
+=head2 turtle_concepts ( [ %options ] )
 
 Returns all concepts in Turtle syntax.
 
 =cut
 
 sub turtle_concepts {
-    my $self = shift;
+    my ($self,%opt) = @_;
+    delete $opt{id};
 
     return join( "\n", 
-        map { $self->turtle_concept($_) } 
+        map { $self->turtle_concept( $_, %opt ) } 
         keys %{ $self->{concepts} } );
 }
 
