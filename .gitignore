@@ -13,5 +13,6 @@ _build
 # distributions
 MYMETA.yml
 MANIFEST
+MANIFEST.skip
 *.gz
 

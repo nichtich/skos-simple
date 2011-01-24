@@ -78,11 +78,14 @@ All notations have the same Datatype URI (this may be changed).
 =head1 USAGE
 
   my $skos = SKOS::Simple->new( 
-      base => 'http://example.com/mykos/',
+      base => 'http://example.com/kos/',
       title => 'My little Knowledge Organization System' 
   );
 
   ....
+  $skos->add_concept( pref => { en => 'foo', ru => 'baz' } );
+  $skos->add_concept( notation => '42.X-23' );
+  ...
 
   print $skos->turtle;
 
@@ -100,9 +103,10 @@ To add more RDF data, you can use the L<serializing functions|/FUNCTIONS>:
 
 use base 'Exporter';
 our %EXPORT_TAGS = ( 
-    turtle => [qw(turtle_literal turtle_statement turtle_uri)] 
+    turtle => [qw(turtle_literal turtle_statement turtle_uri)], 
+    all    => [qw(turtle_literal turtle_statement turtle_uri skos)] 
 );
-our @EXPORT_OK = @{$EXPORT_TAGS{turtle}};
+our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 
 our %NAMESPACES = (
    skos => 'http://www.w3.org/2008/05/skos#',
@@ -157,9 +161,13 @@ sub new {
         scheme      => ($arg{scheme} || ""),
         title       => ($arg{title} || ""), # TODO: multilang ? 
         namespaces  => ($arg{namespaces} || { }), # TODO: count usage 
-        language    => ($arg{language} || ""),    # TODO
-        description => ($arg{description} || ""), # TODO
+        language    => ($arg{language} || "en"),  # TODO: check
+        description => ($arg{description} || ""), # TODO: add
+        identity    => ($arg{identity} || "notation"), # TODO
     }, $class );
+
+    croak "Concepts must have identity by 'notation' or by 'label'"
+        unless $self->{identity} =~ /^(notation|label)$/;
 
     if ( $self->{scheme} eq $self->{base} ) {
         $self->{scheme} = "";
@@ -189,8 +197,8 @@ sub _values {
 
 =head2 add_concept ( %properties )
 
-Adds a concept with given properties. The only mandatory is the identifying
-property to be used as concept id (notation or label). If there already is 
+Adds a concept with given properties. Only the identifying property to be 
+used as concept id (notation or label) is mandatory. If there already is 
 a concept with the same id, both are merged.
 
 =cut
@@ -207,13 +215,38 @@ sub add_concept {
     my @broader   = _values( $arg{broader} );
     my @narrower  = _values( $arg{narrower} );
 
-    my $id = $notation[0] || return;
+    my %prefLabel;
 
-    my @reverse = ( _nocheck => 1, 'notation' );
+    if ( reftype($arg{pref}) ) {
+        if ( reftype($arg{pref}) eq 'HASH' ) {
+            %prefLabel = %{ $arg{pref} };
+            # TODO: check language tags and grep ''
+        } else {
+            croak 'pref must be string or hashref';
+        }
+    } elsif (defined $arg{pref} and $arg{pref} ne '') {
+        %prefLabel = ( $self->{language} => $arg{pref} );
+    }
+
+    my $id;
+    if ($self->{identity} eq 'notation') {
+        $id = shift @notation;
+        croak 'Concepts must be unique per notation'
+            unless $id and not @notation;
+
+        # TODO: we must still check prefLabel
+
+    } else {
+        $id = $prefLabel{ $self->{language} } ||
+            croak 'Concepts must be unique per prefLabel@'.$self->{language};
+    }
+
+    my @reverse = ( _nocheck => 1, 'notation' ); # TODO: prefLabel
 
     $self->{concepts}->{$id} = { 
         notation  => [ ],
         label     => [ ],
+        pref      => \%prefLabel,
         scopeNote => [ ],
         broader   => { },
         narrower  => { },
@@ -453,7 +486,8 @@ sub turtle_concept {
         $stm{'skos:notation'} = $self->turtle_literal( $c->{notation}->[0] );
     }
 
-    # TODO: prefLabel
+    # TODO: prefLabel subPropertyOf rdfs:label ?
+    $stm{'skos:prefLabel'} = $c->{pref};
 
     if ($c->{label}) {
         $stm{'dc:title'} = $self->turtle_literal( $c->{label}->[0] );
@@ -498,16 +532,38 @@ sub turtle_concepts {
         keys %{ $self->{concepts} } );
 }
 
-=head1 FUNCTIONS
+sub skos { 
+    SKOS::Simple->new(@_)
+}
 
-The following methods can also be used as functions for Turtle serialization.
+=head1 EXPORTED FUNCTIONS
+
+With C<skos> you can export an abbreviation for C<< SKOS::Simple->new >>.
+
+The following methods Turtle serialization can also be exported as functions 
+with the C<:turtle> include parameter. Note that they do not implement a full
+Turtle serializer because they don't check whether the URIs, QNames, and/or
+language tags are valid. The followinge example shows some ways of use:
+
+  print turtle_statement( 
+    "<$uri>",
+      "a" => "<http://purl.org/ontology/bibo/Document>",
+      "dc:creator" => [ 
+          '"Terry Winograd"', 
+          '"Fernando Flores"' 
+      ],
+      "dc:date" => turtle_literal( "1987", type => "xs:gYear" ),
+      "dc:title" =>
+          { en => "Understanding Computers and Cognition" },
+      "dc:decription" => undef
+  );
 
 =head2 turtle_statement ( $subject, $predicate => $object [, ... ] )
 
 Returns a (set of) RDF statements in Turtle syntax. Subject and predicate
 parameters must be strings. Object parameters must either be strings or
-arrays of strings. This function does not check or validate parameter
-values - all strings must be valid parts of Turtle syntax!
+arrays of strings. This function strips undefined values and empty strings,
+but it does not further check or validate parameter values.
 
 =cut
 
@@ -517,7 +573,16 @@ sub turtle_statement {
 
     my @s = grep { defined $_ } map {
         my ($p,$o) = ($_,$statements{$_});
-        $o = join(", ", @$o) if ref($o);
+        if ( ref($o) ) {
+           if (reftype($o) eq 'HASH') {
+               $o = [ map { turtle_literal($o->{$_},$_) } keys %$o ];
+           }
+           if (reftype($o) eq 'ARRAY') {
+               $o = join(", ", @$o) if ref($o);
+           } else { 
+               $o = undef; 
+           }
+        }
         (defined $o and $o ne '') ? "$p $o" : undef;
     } keys %statements;
 
@@ -526,33 +591,59 @@ sub turtle_statement {
     return "$subject " . join(" ;\n" , shift @s, map { "    $_" } @s) . " .\n";
 }
 
-=head2 turtle_literal ( $string )
+=head2 turtle_literal ( $string [ [ lang => ] $language | [ type => ] $datatype ] )
 
-Escapes a string as literal in Turtle syntax.
+Returns a literal string escaped in Turtle syntax. You can optionally provide
+either a language or a full datatype URI (but their values are not validated).
+Returns the empty string instead of a Turtle value, if $string is undef or ""!
 
 =cut
 
 sub turtle_literal {
     shift if blessed($_[0]);
     my $value = shift;
+    my %opt;
+
+    if (@_ % 2) {
+        my $v = shift;
+        %opt = ($v =~ /^[a-zA-Z0-9-]+$/) ? ( lang => $v ) : ( type => $v ); 
+    } else {
+        %opt = @_;
+        croak "Literal values cannot have both language and datatype"
+            if ($opt{lang} and $opt{type});
+    }
+
     return "" if not defined $value or $value eq '';
-    # TODO: datatype or language tag
+
     my %ESCAPED = ( "\t" => 't', "\n" => 'n', 
         "\r" => 'r', "\"" => '"', "\\" => '\\' );
     $value =~ s/([\t\n\r\"\\])/\\$ESCAPED{$1}/sg;
-    return "\"$value\"";
+
+    $value = qq("$value");
+
+    if ($opt{lang}) {
+        return $value.'@'.$opt{lang};
+    } elsif ($opt{type}) {
+        return $value.'^^<'.$opt{type} .'>';
+    }
+
+    return $value;
 }
 
 =head2 turtle_uri ( $uri )
 
-...
+Returns an URI in Turtle syntax, that is C<< "<$uri>" >>. Returns the 
+empty string, if C<$uri> is C<undef>, but C<< <> >> if C<$uri> is the
+empty string. In most cases you better directly write C<< "<$uri>" >>.
 
 =cut
 
 sub turtle_uri {
     shift if blessed($_[0]);
     my $value = shift;
-    return "<$value>"; # TODO: check uri?
+    return "" unless defined $value;
+    # my $value = URI->new( encode_utf8( $value ) )->canonical;
+    return "<$value>";
 }
 
 1;

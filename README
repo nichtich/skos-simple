@@ -10,13 +10,17 @@ INSTALLATION
 
     The core of this module is just one file Simple.pm, located in
     lib/SKOS/. Feel free to copy and rename it as you like. For 
-    instance if you put Simple.pm in the same directory as your 
-    script, you can include it via the following statement:
+    instance you can put Simple.pm in the same directory as your 
+    script and directly include it via the following statement:
 
       require 'Simple.pm';
 
-    To not clutter your system with several copies of the file, you
-    should better cleanly install the module. To do so from source:
+    Or to also export the turtle serialization functions:
+
+      require 'Simple.pm'; SKOS::Simple->import(':turtle');
+
+    But to not clutter your system with several copies of the Simple.pm,
+    you should better cleanly install the module. To do so from source:
 
     $ perl Build.PL
     $ ./Build test

@@ -66,3 +66,7 @@ $skos->add_concept( notation => 'x', scopeNote => 'test' );
 # use Data::Dumper;
 # print Dumper($skos);
 
+$skos = SKOS::Simple->new();
+$skos->add_concept( notation => 'x', pref => { en => 'X1', 'fr' => 'X2' } );
+# print $skos->turtle_concept('x');
+
