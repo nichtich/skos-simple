@@ -1,5 +1,5 @@
 NAME
-    SKOS::Simple - Simple SKOS without package dependencies
+    SKOS::Simple - Simple SKOS, no package dependencies but entailment
 
 DESCRIPTION
     This Perl 5 module provides a class to create and manage SKOS data.
@@ -29,6 +29,10 @@ INSTALLATION
     You can then use SKOS::Simple in your scripts like other modules:
 
       use SKOS::Simple;
+
+USAGE
+
+    Please have a look at the SYNOPSIS section of SKOS::Simple.pm.
 
 BUGS
     Please report any bugs or feature requests to

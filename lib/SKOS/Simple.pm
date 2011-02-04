@@ -26,13 +26,12 @@ use RDF, which is overrated anyway). For this reason the set of possible
 SKOS schemes, that can be handled by SKOS::Simple is limited by some basic 
 assumptions. 
 
-The current version of this class is optimized form creating and 
-serializing valid SKOS schemes, but not for reading and modifying them.
-A common use case of SKOS::Simple is to transform a given terminology
-from some custom format to SKOS, which is then 
-L<serialized|/"SERIALIZATION METHODS"> in Terse RDF Triple language
-(Turtle). You can then publish the Turtle data
-and/or process them with general RDF and SKOS tools.
+The current version of this class is optimized form creating and serializing
+valid SKOS schemes, but not for reading and modifying them. A common use case
+of SKOS::Simple is to transform a given terminology from some custom format 
+to SKOS, which is then L<serialized|/"SERIALIZATION METHODS"> in Terse RDF 
+Triple language (Turtle). You can then publish the Turtle data and/or process
+them with general RDF and SKOS tools.
 
 =head1 CURRENT STATE
 
@@ -75,11 +74,12 @@ All notations have the same Datatype URI (this may be changed).
 
 =back
 
-=head1 USAGE
+=head1 SYNOPSIS
 
   my $skos = SKOS::Simple->new( 
-      base => 'http://example.com/kos/',
-      title => 'My little Knowledge Organization System' 
+      base  => 'http://example.com/kos/',
+      title => 'My little Knowledge Organization System',
+       
   );
 
   ....
@@ -94,17 +94,17 @@ To add more RDF data, you can use the L<serializing functions|/FUNCTIONS>:
 
   use SKOS::Simple qw(:turtle);
 
-  print $skos->turtle_namespaces 
-      . $skos->turtle_base;       # unless you already used $skos->turtle
-  
+  print $skos->turtle;
+
+    
   .... 
 
 =cut
 
 use base 'Exporter';
 our %EXPORT_TAGS = ( 
-    turtle => [qw(turtle_literal turtle_statement turtle_uri)], 
-    all    => [qw(turtle_literal turtle_statement turtle_uri skos)] 
+    turtle => [qw(turtle_literal turtle_literal_list turtle_statement turtle_uri)], 
+    all    => [qw(turtle_literal turtle_literal_list turtle_statement turtle_uri skos)]
 );
 our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 
@@ -126,23 +126,37 @@ Creates a new concept scheme with some given properties.
 
 =item base
 
-The URI prefix that is used for all concepts.
-This property is required.
+The URI prefix that is used for all concepts (required).
 
 =item scheme
 
 The URI of the whole concept scheme (C<skos:conceptScheme>).
 By default the C<base> property is used as concept scheme URI.
 
+=item title
+
+Title(s) of the concept scheme. Must be either a string or a
+hash that maps language tags to strings.
+
 =item namespaces
 
-=item title
+An optional hash with additional namespaces. You can also override standard
+namespaces (e.g. C<< skos => 'http://www.w3.org/2004/02/skos/core#' >>).
+This explicitly specified namespaces are always included as C<< @prefix >>
+in the Turtle output.
 
 =item description
 
+...
+
 =item language
 
+...
+
 =item hierarchy
+
+Either C<tree> or C<multi> or C<none> (default). 
+At the moment only C<tree> is supported.
 
 =back
 
@@ -186,10 +200,16 @@ sub new {
     $self->{namespaces}->{dc} = $NAMESPACES{dc}
         if ( ($self->{title} || $self->{description}) && not $self->{namespaces}->{dc});
 
+    my $lang = $self->{language};
+    if ($self->{title} && not ref($self->{title}) && $lang) {
+        $self->{title} = { $lang => $self->{title} };
+    }
+
     return $self;
 }
 
 sub _values {
+    # TODO: also allow hashref (?)
     my @values = map { (reftype($_) && reftype($_) eq 'ARRAY') ? @$_ : $_ } @_;
     @values = grep { $_ and $_ ne '' } @values;
     return @values;
@@ -447,7 +467,7 @@ sub turtle_scheme {
 
     my %stm = ( 'a' => 'skos:ConceptScheme' );
    
-    $stm{'dc:title'} = $self->turtle_literal( $self->{title} )
+    $stm{'dc:title'} = $self->turtle_literal_list( $self->{title} )
         unless $self->{title} eq '';
 
     # note that lean => 1 does not imply top => 0 !
@@ -531,6 +551,12 @@ sub turtle_concepts {
         map { $self->turtle_concept( $_, %opt ) } 
         keys %{ $self->{concepts} } );
 }
+
+=head2 skos
+
+This is just a shortcut for C<< SKOS::Simple->new >>.
+
+=cut
 
 sub skos { 
     SKOS::Simple->new(@_)
@@ -644,6 +670,32 @@ sub turtle_uri {
     return "" unless defined $value;
     # my $value = URI->new( encode_utf8( $value ) )->canonical;
     return "<$value>";
+}
+
+=head2 turtle_literal_list ( $literal | ( $language => $literal )+ )
+
+Returns a list of literal strings in Turtle syntax.
+
+=cut
+
+sub turtle_literal_list {
+    shift if blessed($_[0]);
+
+    my $list;
+ 
+    if ( @_ % 2 ) {
+        if ( ref( $_[0] ) eq 'HASH') {
+            $list = $_[0];
+        } else {
+            return turtle_literal( $_[0] );
+        }
+    } else {
+        $list = %{@_};
+    }
+
+    return join(", ", 
+        map { turtle_literal( $list->{$_}, lang => $_ ) } keys %$list
+    );
 }
 
 1;
