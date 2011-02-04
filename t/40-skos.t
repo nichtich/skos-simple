@@ -1,10 +1,10 @@
 #!perl -T
 
-use Test::More tests => 20;
+use Test::More qw(no_plan);
 
 use_ok( 'SKOS::Simple' );
 
-my $skos = SKOS::Simple->new;
+my $skos = SKOS::Simple->new( notation => 'unique' );
 
 my $ttl = $skos->turtle;
 $ttl =~ s/\s+|\n/ /g;
@@ -26,7 +26,7 @@ $skos->add_concept( notation => 'x', broader => 'y' );
 is( $skos->size, 2, 'second concept' );
 is_deeply( [ $skos->top_concepts ], ['y'], 'top concept' );
 
-is( $skos->turtle_scheme, 
+is( $skos->scheme_turtle, 
     "<> a skos:ConceptScheme ;\n    skos:hasTopConcept <y> .\n", "full scheme" );
 
 my %schemeuris = (
@@ -36,35 +36,53 @@ my %schemeuris = (
 my ($s1,$s2) = (undef,'');
 do {
     $skos = SKOS::Simple->new( base => 'http://example.com', scheme => $s1 );
-    is( $skos->turtle_scheme( top => 0 ), "<$s2> a skos:ConceptScheme .\n", "lean scheme" );
+    is( $skos->scheme_turtle( top => 0 ), "<$s2> a skos:ConceptScheme .\n", "lean scheme" );
 } while ( ($s1,$s2) = each(%schemeuris) );
 
-$skos = SKOS::Simple->new( base => 'http://example.org/' );
+$skos = SKOS::Simple->new( base => 'http://example.org/', notation => 'unique' );
 $skos->add_concept( notation => '123' );
-$ttl = $skos->turtle_concepts( scheme => 1 );
+$ttl = $skos->concepts_turtle( scheme => 1 );
 ok( $ttl =~ /skos:topConceptOf/ and not $ttl =~ /skos:inScheme/ );
-$ttl = $skos->turtle_concepts( top => 0 );
+$ttl = $skos->concepts_turtle( top => 0 );
 ok( not $ttl =~ /skos:topConceptOf/ and $ttl =~ /skos:inScheme/ );
-$ttl = $skos->turtle_concepts( top => 0, scheme => 0 );
+$ttl = $skos->concepts_turtle( top => 0, scheme => 0 );
 ok( not $ttl =~ /skos:topConceptOf/ and not $ttl =~ /skos:inScheme/ );
-$ttl = $skos->turtle_concepts( scheme => 2 );
+$ttl = $skos->concepts_turtle( scheme => 2 );
 ok( $ttl =~ /skos:topConceptOf/ and $ttl =~ /skos:inScheme/ );
 
-is( $skos->turtle_concepts( lean => 1 ), $skos->turtle_concepts( top => 0, scheme => 1 ) );
+is( $skos->concepts_turtle( lean => 1 ), $skos->concepts_turtle( top => 0, scheme => 1 ) );
 
 $skos->add_concept( notation => '456', broader => '123' );
-$ttl = $skos->turtle_concepts();
+$ttl = $skos->concepts_turtle();
 ok( $ttl =~ /skos:topConceptOf/ and $ttl =~ /skos:inScheme/ );
 
+$skos = SKOS::Simple->new( label => 'unique', language => 'de' );
+is ( $skos->concept_id( label => 'foo' ), 'foo' );
+is ( $skos->concept_id( notation => 'x', label => 'foo' ), 'foo' );
+is ( $skos->concept_id( notation => 'x' ), undef );
 
-$skos = SKOS::Simple->new( language => 'de' );
-$skos->add_concept( notation => 'x', scopeNote => 'test' );
 
-# print $skos->turtle_concept('x', top => 0);
+my $id = $skos->add_concept( label => 'hi' ); #{ 'de' => $label }; 
+is ( $id, 'hi' );
+#print $skos->concepts;
+
+
+# $skos = SKOS::Simple->new( language => 'de', notation => 'unique' );
+# $skos->add_concept( notation => 'x', scopeNote => 'test' );
+
+$skos = SKOS::Simple->new( notation => 'unique', namespaces => { foo => 'my:id:' } );
+$id = $skos->add_concept( notation => '0', 'foo:bar' => 'xxx' );
+print $skos->concept_turtle( $id );
+#print 
+use Data::Dumper;
+print Dumper($skos)."\n";
+
+
+# print $skos->concept_turtle('x', top => 0);
 # use Data::Dumper;
 # print Dumper($skos);
 
-$skos = SKOS::Simple->new();
+$skos = SKOS::Simple->new( notation => 'unique' );
 $skos->add_concept( notation => 'x', pref => { en => 'X1', 'fr' => 'X2' } );
-# print $skos->turtle_concept('x');
+# print $skos->concept_turtle('x');
 
