@@ -12,7 +12,7 @@ SKOS::Simple - SKOS with entailment and without package dependencies
 use Scalar::Util qw(blessed reftype);
 use Carp;
 
-our $VERSION = '0.0.6';
+our $VERSION = '0.0.7';
 
 =head1 DESCRIPTION
 
@@ -109,10 +109,12 @@ our %EXPORT_TAGS = (
 our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 
 our %NAMESPACES = (
-   skos => 'http://www.w3.org/2008/05/skos#',
-#   xsd  => 'http://www.w3.org/2001/XMLSchema#',
+   rdf     => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+   skos    => 'http://www.w3.org/2008/05/skos#',
+   skosold => 'http://www.w3.org/2004/02/skos/core#',
    dc   => 'http://purl.org/dc/elements/1.1/',
 #   dct  => 'http://purl.org/dc/terms/',
+#   xsd  => 'http://www.w3.org/2001/XMLSchema#',
 #   foaf => 'http://xmlns.com/foaf/0.1/',
 );
 
@@ -141,9 +143,9 @@ hash that maps language tags to strings.
 =item namespaces
 
 An optional hash with additional namespaces. You can also override standard
-namespaces (e.g. C<< skos => 'http://www.w3.org/2004/02/skos/core#' >>).
-This explicitly specified namespaces are always included as C<< @prefix >>
-in the Turtle output.
+namespaces (e.g. C<< skos => 'http://www.w3.org/2004/02/skos/core#' >> to
+use the outdated SKOS namespace). All namespaces explicitly specified by 
+this parameter are always included as C<< @prefix >> in the Turtle output.
 
 =item description
 
@@ -397,10 +399,67 @@ sub top_concepts {
     }
 }
 
+=head2 add_hashref ( $hashref )
+
+=cut
+
+sub add_hashref {
+    my ($self, $hash) = @_;
+
+    my $base = $self->{base}; # may be ""
+
+    # ignores all but the following predicates
+    my %predicates = (
+        $NAMESPACES{rdf}.'type'      => 'a',
+        $NAMESPACES{dc}.'identifier' => 'id'
+    );
+    foreach my $p (qw(notation prefLabel altLabel hiddenLabel broader narrower notation definition note)) {
+        $predicates{ $NAMESPACES{skos}.$p    } = $p;
+        $predicates{ $NAMESPACES{skosold}.$p } = $p;
+    }
+
+    foreach my $subject ( keys %$hash ) {
+        my $subj = $subject; 
+        next unless ($subj =~ s/^$base//);
+
+        # TODO: $self->{scheme} as subject
+
+        my %concept = (); #  => $subj );
+        $concept{notation} = $subj; # TODO: remove
+        my $is_concept = 0; # TODO: check
+
+        foreach my $predicate ( keys %{$hash->{$subject}} ) {
+            my $p = $predicates{ $predicate } || next;
+
+            foreach my $object ( @{ $hash->{$subject}->{$predicate} } ) {
+                my $obj;
+       
+                if ( $p =~ /^(narrower|broader)$/ ) {
+                    next unless $object->{type} eq 'uri';
+                    $obj = $object->{value};
+print "$obj\n";
+                    next unless ($obj =~ s/^$base//);
+                    push @{$concept{$p}}, $obj; 
+                } elsif ( $p =~ /^(prefLabel)/ ) {
+                    $obj = $object->{value}; # TODO: language
+                    $concept{label} = $obj; # TODO: unique
+                } elsif ( $p eq 'definition' ) {
+                }
+
+                # TODO: map
+                print "$subj $p\n";
+            }
+        }
+        if ( %concept ) {
+            $self->add_concept( %concept );
+        }
+    }
+}
+
 =head2 concept_id ( notation => $notation | label => $label )
 
-Returns the identifier of a concept with given notation and/or
-label. The concept does not need to exist.
+Returns the identifier of a concept with given notation and/or label.
+It is not checked whether the given concept exists in this scheme.
 
 =cut
 
