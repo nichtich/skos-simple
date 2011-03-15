@@ -12,19 +12,22 @@ SKOS::Simple - SKOS with entailment and without package dependencies
 use Scalar::Util qw(blessed reftype);
 use Carp;
 
-our $VERSION = '0.0.7';
+our $VERSION = '0.0.8';
 
 =head1 DESCRIPTION
 
-This module provides a simple class to create and handle Simple Knowledge
-Organization Systems (thesauri, classifications, etc.) in SKOS. In contrast
-to most RDF-related modules, SKOS::Simple does not depend on any non-core 
-modules, so you can install it by just copying one file. The module 
-implements basic entailment rules of the SKOS standard without the burden
-of a full RDF reasoning engine (actually this module internally does not 
-use RDF, which is overrated anyway). For this reason the set of possible 
-SKOS schemes, that can be handled by SKOS::Simple is limited by some basic 
-assumptions. 
+This module provides a simple class to create and handle classifications,
+thesauri and similar systems in the data model of the Simple Knowledge
+Organization System (SKOS). A detailed specification is available at
+L<http://www.w3.org/TR/skos-reference/>. This modules supports most,
+but not all, features of SKOS and adds some useful constraints, which
+mostly derive from best-practice.
+
+In contrast to other RDF-related modules, SKOS::Simple does not depend on 
+any non-core Perl modules, so you can install it by just copying one file. 
+The module implements basic entailment rules of the SKOS standard without 
+the burden of a full RDF reasoning engine. Actually, you can use this 
+module without having to deal with details of RDF.
 
 The current version of this class is optimized form creating and serializing
 valid SKOS schemes, but not for reading and modifying them. A common use case
@@ -32,6 +35,30 @@ of SKOS::Simple is to transform a given terminology from some custom format
 to SKOS, which is then L<serialized|/"SERIALIZATION METHODS"> in Terse RDF 
 Triple language (Turtle). You can then publish the Turtle data and/or process
 them with general RDF and SKOS tools.
+
+=head1 SYNOPSIS
+
+  my $skos = SKOS::Simple->new( 
+      base  => 'http://example.com/kos/',
+      title => 'My little Knowledge Organization System',
+       
+  );
+
+  ....
+  $skos->add_concept( pref => { en => 'foo', ru => 'baz' } );
+  $skos->add_concept( notation => '42.X-23' );
+  ...
+
+  print $skos->turtle;
+
+SKOS::Simple only supports a limited set of possible RDF statements.
+To add more RDF data, you can use the L<serializing functions|/FUNCTIONS>:
+
+  use SKOS::Simple qw(:turtle);
+
+  print $skos->turtle;
+
+  .... 
 
 =head1 CURRENT STATE
 
@@ -79,31 +106,6 @@ C<skos:scopeNote> etc.) is the plain literals instead of any resource.
 
 =back
 
-=head1 SYNOPSIS
-
-  my $skos = SKOS::Simple->new( 
-      base  => 'http://example.com/kos/',
-      title => 'My little Knowledge Organization System',
-       
-  );
-
-  ....
-  $skos->add_concept( pref => { en => 'foo', ru => 'baz' } );
-  $skos->add_concept( notation => '42.X-23' );
-  ...
-
-  print $skos->turtle;
-
-SKOS::Simple only supports a limited set of possible RDF statements.
-To add more RDF data, you can use the L<serializing functions|/FUNCTIONS>:
-
-  use SKOS::Simple qw(:turtle);
-
-  print $skos->turtle;
-
-    
-  .... 
-
 =cut
 
 use base 'Exporter';
@@ -115,23 +117,97 @@ our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 
 our %NAMESPACES = (
    rdf     => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
-   skosnew => 'http://www.w3.org/2008/05/skos#',
    skos    => 'http://www.w3.org/2004/02/skos/core#',
    dc      => 'http://purl.org/dc/elements/1.1/',
 #   dct  => 'http://purl.org/dc/terms/',
 #   xsd  => 'http://www.w3.org/2001/XMLSchema#',
 #   foaf => 'http://xmlns.com/foaf/0.1/',
+#   skosxl  => 'http://www.w3.org/2008/05/skos-xl#'
+#   owl  => 'http://www.w3.org/2002/07/owl#',
 );
 
-our %NOTE_PROPERTIES = (
-    'note'          => 1,
-    'changeNote'    => 1,
-    'definition'    => 1,
-    'editorialNote' => 1,
-    'example'       => 1,
-    'historyNote'   => 1,
-    'scopeNote'     => 1
-);
+=head1 SUPPORTED TERMS
+
+The following classes and properties from the SKOS vocabulary are supported.
+The numbers in brackets ([S..]) refer to integrity conditions from the SKOS
+specification.
+
+=over 4
+
+=item L<http://www.w3.org/TR/skos-reference/#concepts|Concepts>
+
+Instances of C<skos:Concept> [S1] are not represented as objects but as parts
+of a SKOS::Simple object. You can attach them to a scheme with L</add_concept>.
+
+=item L<http://www.w3.org/TR/skos-reference/#notations|Concept Schemes>
+
+Instances of C<skos:ConceptScheme> are implemented as objects of type 
+SKOS::Simple [S2]. Concepts added to a scheme are automatically connected
+to the scheme via C<skos:inScheme> [S3-S4] (only serialized if requested).
+Concepts can be selected as top concepts (C<skos:hasTopConcept> / 
+C<skos:topConceptOf> [S5-S8]). In contrast to the SKOS specification,
+(L<http://www.w3.org/TR/skos-reference/#L2446|see 4.6.3) the top concepts 
+of a scheme cannot have broader concepts in the same scheme.
+
+Concepts and concept schemes must be disjoint [S9].
+
+=item L<http://www.w3.org/TR/skos-reference/#labels|Lexical Labels>
+
+=item L<http://www.w3.org/TR/skos-reference/#notations|Notations>
+
+C<skos:prefLabel>, C<skos:altLabel>, C<skos:hiddenLabel> ...
+
+C<skos:notation> ...
+
+In addition this module supports three common label properties:
+
+C<dc:identifier>, C<dc:title>, C<rdfs:label> ...
+
+=cut
+
+our %LABEL_PROPERTIES = map { $_ => 1 } qw(prefLabel altLabel hiddenLabel);
+
+=item L<http://www.w3.org/TR/skos-reference/#semantic-relations|Semantic Relations>
+
+So called "semantic" relations (C<skos:semanticRelation>) include 
+C<skos:broader>, C<skos:narrower>, and C<skos:related>.
+
+The C<skos:broaderTransitive> and C<skos:narrowerTransitive> are currently 
+not supported.
+
+With this module you can only model semantic relations between concepts 
+in the same scheme.
+
+=cut
+
+our %RELATION_PROPERTIES = map { $_ => 1 } qw(semanticRelation 
+    broader narrower related broaderTransitive narrowerTransitive);
+
+=item L<http://www.w3.org/TR/skos-reference/#notes|Documentation properties>
+
+C<skos:note>, C<skos:changeNote>, C<skos:definition>, C<skos:editorialNote>,
+C<skos:example>, C<skos:historyNote> and C<skos:scopeNote> can be used to
+document concepts. In contrast to the SKOS specification their range is 
+limited to literal values.
+
+=cut
+
+our %NOTE_PROPERTIES = map { $_ => 1 } qw(note 
+    changeNote definition editorialNote example historyNote scopeNote);
+
+=back
+
+Concept Collections (C<skos:Collection>, C<skos:OrderedCollection>, 
+C<skos:member>, C<skos:memberList>) and SKOS extension for labels 
+(C<skosxl:Label> etc.) are not supported. Mapping Properties 
+(C<skos:mappingRelation>, C<skos:closeMatch>, C<skos:exactMatch>, 
+C<skos:broadMatch>, C<skos:narrowMatch>, C<skos:relatedMatch>) will
+probably be implemented in another module.
+
+=cut
+
+our %MAPPING_PROPERTIES = map { $_ => 1 } qw(mappingRelation 
+    closeMatch exactMatch broadMatch narrowMatch relatedMatch);
 
 =head1 METHODS
 
@@ -414,6 +490,8 @@ sub add_concept {
     }
 
     return $id;
+    
+    # TODO: check: Concepts and concept schemes must be disjoint [S9].
 }
 
 =head2 top_concepts ( [ @ids ] )
@@ -465,9 +543,14 @@ sub add_hashref {
         $NAMESPACES{rdf}.'type'      => 'a',
         $NAMESPACES{dc}.'identifier' => 'id'
     );
-    foreach my $p (qw(notation prefLabel altLabel hiddenLabel broader narrower notation definition note)) {
+
+    my @pnames = (
+        keys %NOTE_PROPERTIES, 
+        keys %RELATION_PROPERTIES, 
+        keys %LABEL_PROPERTIES, 'notation' );
+
+    foreach my $p (@pnames) {
         $predicates{ $NAMESPACES{skos}.$p    } = $p;
-        $predicates{ $NAMESPACES{skosnew}.$p } = $p; # ?
     }
 
     foreach my $subject ( keys %$hash ) {
@@ -725,6 +808,7 @@ sub concept_turtle {
         }
     }
 
+    # [S7] skos:topConceptOf is a sub-property of skos:inScheme
     if ( $opt{scheme} - $is_top > 0 ) {
         $stm{'skos:inScheme'} = '<' . $self->{scheme} . '>';
     }
