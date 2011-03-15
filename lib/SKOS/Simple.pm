@@ -70,6 +70,11 @@ All notations have the same Datatype URI (this may be changed).
 
 =item
 
+The range of all documentation properties (C<skos:note>, C<skos:example>,
+C<skos:scopeNote> etc.) is the plain literals instead of any resource.
+
+=item
+
 ...sure there are some more limitations...
 
 =back
@@ -110,12 +115,22 @@ our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 
 our %NAMESPACES = (
    rdf     => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
-   skos    => 'http://www.w3.org/2008/05/skos#',
-   skosold => 'http://www.w3.org/2004/02/skos/core#',
-   dc   => 'http://purl.org/dc/elements/1.1/',
+   skosnew => 'http://www.w3.org/2008/05/skos#',
+   skos    => 'http://www.w3.org/2004/02/skos/core#',
+   dc      => 'http://purl.org/dc/elements/1.1/',
 #   dct  => 'http://purl.org/dc/terms/',
 #   xsd  => 'http://www.w3.org/2001/XMLSchema#',
 #   foaf => 'http://xmlns.com/foaf/0.1/',
+);
+
+our %NOTE_PROPERTIES = (
+    'note'          => 1,
+    'changeNote'    => 1,
+    'definition'    => 1,
+    'editorialNote' => 1,
+    'example'       => 1,
+    'historyNote'   => 1,
+    'scopeNote'     => 1
 );
 
 =head1 METHODS
@@ -143,8 +158,8 @@ hash that maps language tags to strings.
 =item namespaces
 
 An optional hash with additional namespaces. You can also override standard
-namespaces (e.g. C<< skos => 'http://www.w3.org/2004/02/skos/core#' >> to
-use the outdated SKOS namespace). All namespaces explicitly specified by 
+namespaces (e.g. C<< skos => 'http://www.w3.org/2008/05/skos#' >> to
+use another SKOS namespace). All namespaces explicitly specified by 
 this parameter are always included as C<< @prefix >> in the Turtle output.
 
 =item description
@@ -159,6 +174,23 @@ this parameter are always included as C<< @prefix >> in the Turtle output.
 
 Either C<tree> or C<multi> or C<none> (default). 
 At the moment only C<tree> is supported.
+
+=item identity
+
+...
+
+=item label
+
+...
+
+=item notation
+
+...
+
+=item properties
+
+Additional properties as structured Turtle. Triples with predicates
+C<a>, C<dc:title>, and C<skos:...> are not allowed but removed.
 
 =back
 
@@ -221,6 +253,25 @@ sub new {
         $self->{title} = { $lang => $self->{title} };
     }
 
+    $self->{prop} = {
+        'a' => 'skos:ConceptScheme' # TODO: allow additional types
+    };
+
+    # additional properties
+    if ( $arg{properties} ) {
+        my $p = $arg{properties};
+        my $a = delete $p->{a};
+        my $dct = delete $p->{'dc:title'};
+
+        # TODO: also filter other namespaces and full URI forms
+        my @s = grep { $_ =~ /skos:/ } keys %$p;
+        delete $p->{$_} for @s;
+
+        while ( my ($key, $value) = each %$p ) {
+            $self->{prop}->{$key} = $value;
+        }
+    }
+
     return $self;
 }
 
@@ -256,8 +307,6 @@ sub add_concept {
     my $notation  = delete $arg{notation};
     $notation = "" unless defined $notation;
 
-    my @example = _values( delete $arg{example} );
-
     my $lang = $self->{language};
 
     #my @labels    = _values( delete $arg{label} );
@@ -267,8 +316,6 @@ sub add_concept {
     } elsif( not ref($labels) ) {
         $labels = { $lang => $labels }; # TODO: array
     }
-
-    my @scopeNote = _values( delete $arg{scopeNote} ); # scopeNote or note?
 
     my $prefLabel = $labels->{$lang};
     $prefLabel = "" unless defined $prefLabel;
@@ -325,13 +372,17 @@ sub add_concept {
     my @reverse = ( _nocheck => 1, 'notation' ); # TODO: prefLabel
 
     if (%$labels) {
-        push @{ $concept->{label} }, values %{$labels};      # TODO: uniq
+        push @{ $concept->{label} }, values %{$labels}; # TODO: uniq
     }
 
-    if (@example) {
-        push @{ $concept->{example} }, @example;
+    foreach my $name ( keys %NOTE_PROPERTIES ) {
+        my @values = _values( delete $arg{$name} );
+        if ( @values ) {
+            push @{ $concept->{$name} }, @values;
+        }
     }
 
+    my @scopeNote = _values( delete $arg{scopeNote} ); # scopeNote or note?
     if (@scopeNote) {
         push @{ $concept->{scopeNote} }, @scopeNote;
         # TODO: add [default] language
@@ -368,13 +419,12 @@ sub add_concept {
 =head2 top_concepts ( [ @ids ] )
 
 Marks one or more concepts as top concepts. The given concepts must 
-already exist and must not have any broader concepts. Without parameters, 
+already exist and must not have any broader concepts. Without parameters,
 this methods returns a list of all top concept identifiers. Unless you
-explicitly specify top concepts, this is the list of all concepts
-without broader concepts. As soon as you explicitly set some top
-concepts, these will be the I<only> top concepts. You can reset the 
-top concepts to all concepts without broader concepts, provide C<undef>
-as only argument.
+explicitly specify top concepts, a list of I<all> concepts without broader
+concepts is returned. As soon as you explicitly set some top concepts,
+they will be the I<only> top concepts. You can reset the top concepts
+to all concepts without broader concepts, provide C<undef> as only argument.
 
 =cut
 
@@ -401,6 +451,8 @@ sub top_concepts {
 
 =head2 add_hashref ( $hashref )
 
+experimental.
+
 =cut
 
 sub add_hashref {
@@ -415,7 +467,7 @@ sub add_hashref {
     );
     foreach my $p (qw(notation prefLabel altLabel hiddenLabel broader narrower notation definition note)) {
         $predicates{ $NAMESPACES{skos}.$p    } = $p;
-        $predicates{ $NAMESPACES{skosold}.$p } = $p;
+        $predicates{ $NAMESPACES{skosnew}.$p } = $p; # ?
     }
 
     foreach my $subject ( keys %$hash ) {
@@ -437,7 +489,7 @@ sub add_hashref {
                 if ( $p =~ /^(narrower|broader)$/ ) {
                     next unless $object->{type} eq 'uri';
                     $obj = $object->{value};
-print "$obj\n";
+#print "$obj\n";
                     next unless ($obj =~ s/^$base//);
                     push @{$concept{$p}}, $obj; 
                 } elsif ( $p =~ /^(prefLabel)/ ) {
@@ -446,8 +498,8 @@ print "$obj\n";
                 } elsif ( $p eq 'definition' ) {
                 }
 
-                # TODO: map
-                print "$subj $p\n";
+# TODO: map
+#print "$subj $p\n";
             }
         }
         if ( %concept ) {
@@ -496,13 +548,16 @@ sub has_concept {
     my %arg = (@_ == 1) ? ( id => $_[0] ) : @_;
     return exists $self->{concepts}->{ $arg{id} }
         if defined $arg{id};
-    # TODO: ask by other properties (URI, broader, narrower, is-top, etc.)
+
+    # NOTE: We may later extend the method to ask by other properties 
+    # (URI, broader, narrower, is-top, etc.)
+
     return 0;
 }
 
 =head2 size
 
-Returns the number of concepts.
+Returns the total number of concepts.
 
 =cut
 
@@ -604,18 +659,18 @@ sub scheme_turtle {
     my ($self,%opt) = @_;
     $opt{top} = 1 unless exists $opt{top};
 
-    my %stm = ( 'a' => 'skos:ConceptScheme' );
-   
-    $stm{'dc:title'} = $self->turtle_literal_list( $self->{title} )
-        unless $self->{title} eq '';
+    $self->{prop}->{'dc:title'} = 
+        $self->{title} eq '' ? '' : turtle_literal_list( $self->{title} );
 
     # note that lean => 1 does not imply top => 0 !
     if ( $opt{top} ) { 
         my @top = $self->top_concepts();
-        $stm{'skos:hasTopConcept'} = [ map { "<$_>" } @top ];
+        $self->{prop}->{'skos:hasTopConcept'} = [ map { "<$_>" } @top ];
+    } else {
+        delete $self->{prop}->{'skos:hasTopConcept'}
     }
 
-    return $self->turtle_statement( "<" . $self->{scheme} . ">", %stm );
+    return $self->turtle_statement( "<" . $self->{scheme} . ">", %{$self->{prop}} );
 }
 
 =head2 concept_turtle ( $id [, %options ] )
@@ -649,7 +704,8 @@ sub concept_turtle {
     $stm{'skos:prefLabel'} = $c->{pref};
 
     if ($c->{label}) {
-        $stm{'dc:title'} = $self->turtle_literal( $c->{label}->[0] );
+        my $label = $self->turtle_literal( $c->{label}->[0] );
+        $stm{'dc:title'} = $label;
     }
 
     foreach my $rel (qw(broader narrower related)) {
@@ -673,12 +729,11 @@ sub concept_turtle {
         $stm{'skos:inScheme'} = '<' . $self->{scheme} . '>';
     }
 
-    if ( $c->{example} ) {
-        $stm{'skos:example'} = turtle_literal_list( $c->{example} );
+    # TODO: S17 - infer skos:note only if requested
+    foreach my $name ( keys %NOTE_PROPERTIES ) {
+        next unless $c->{$name};
+        $stm{"skos:$name"} = turtle_literal_list( $c->{$name} );
     }
-    # foreach my $p ( keys %{$c->{custom}} ) {
-    #    $stm = 
-    #}
 
     return $self->turtle_statement( "<$id>", %stm );
 }
@@ -700,7 +755,9 @@ sub concepts_turtle {
 
 =head1 EXPORTED FUNCTIONS
 
-With C<skos> you can export an abbreviation for C<< SKOS::Simple->new >>.
+The following functions can be exported on request. The export tags
+C<:turtle> and C<:all> can be used to export all C<turtle_...> or 
+all functions.
 
 =head2 skos
 

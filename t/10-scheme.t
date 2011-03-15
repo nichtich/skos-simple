@@ -9,14 +9,14 @@ my $skos = SKOS::Simple->new;
 isa_ok( $skos, 'SKOS::Simple' );
 
 ### check namespace prefixes
-check_ns( $skos, skos => 'http://www.w3.org/2008/05/skos#' );
+check_ns( $skos, skos => 'http://www.w3.org/2004/02/skos/core#' );
 
 my %ns = ( foo => 'http://example.org/' );
 
 $skos = SKOS::Simple->new( namespaces => \%ns );
 check_ns( $skos, skos => 'http://www.w3.org/2008/05/skos#', %ns );
 
-$ns{skos} = 'http://www.w3.org/2004/02/skos/core#'; # override
+$ns{skos} = 'http://www.w3.org/2008/05/skos#'; # override
 
 $skos = SKOS::Simple->new( namespaces => \%ns );
 check_ns( $skos, %ns );
@@ -35,6 +35,12 @@ like( $skos->turtle,
 
 $skos = SKOS::Simple->new( title => 'Hola', language => 'es' );
 like( $skos->turtle, qr/dc:title\s"Hola"\@es/, 'title with default language' );
+
+### check properties
+my $prop = { 'a' => '<x:y>', 'skos:subject' => 'y', 'f:oo' => 'b:ar' };
+$skos = SKOS::Simple->new( properties => $prop );
+is( $skos->scheme_turtle, "<> a skos:ConceptScheme ;\n    f:oo b:ar .\n", 'properties' );
+
 
 sub check_ns {
     my ($skos, %ns) = @_;

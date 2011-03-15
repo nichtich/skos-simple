@@ -10,7 +10,7 @@ my $ttl = $skos->turtle;
 $ttl =~ s/\s+|\n/ /g;
 $ttl =~ s/^\s+|\s+$//g;
 
-is( $ttl, '@prefix skos: <http://www.w3.org/2008/05/skos#> . <> a skos:ConceptScheme .' );
+is( $ttl, '@prefix skos: <http://www.w3.org/2004/02/skos/core#> . <> a skos:ConceptScheme .' );
 is( $skos->size, 0, 'size zero' );
 
 my @c = $skos->top_concepts;
