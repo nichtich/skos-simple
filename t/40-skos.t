@@ -17,7 +17,9 @@ my @c = $skos->top_concepts;
 is ( scalar @c, 0, 'no top concepts' );
 
 $skos->add_concept( notation => 'x' );
-ok( $skos->has_concept('x') ); 
+ok( $skos->has_concept('x') );
+ok( $skos->has_concept( notation => 'x') );  
+ok( $skos->has_concept( id => 'x') );  
 is( $skos->size, 1, 'one concept' );
 
 is_deeply( [ $skos->top_concepts ], ['x'], 'top concept' );
@@ -56,16 +58,17 @@ $skos->add_concept( notation => '456', broader => '123' );
 $ttl = $skos->concepts_turtle();
 ok( $ttl =~ /skos:topConceptOf/ and $ttl =~ /skos:inScheme/ );
 
-$skos = SKOS::Simple->new( label => 'unique', language => 'de' );
+$skos = SKOS::Simple->new( identity => 'label', language => 'de' );
 is ( $skos->concept_id( label => 'foo' ), 'foo' );
-is ( $skos->concept_id( notation => 'x', label => 'foo' ), 'foo' );
-is ( $skos->concept_id( notation => 'x' ), undef );
+is ( $skos->concept_id( notation => 'x', label => 'bar' ), 'bar' );
+is ( $skos->concept_id( notation => 'x' ), '' );
 
 
 my $id = $skos->add_concept( label => 'hi' ); #{ 'de' => $label }; 
 is ( $id, 'hi' );
 #print $skos->concepts;
 
+__END__
 
 # $skos = SKOS::Simple->new( language => 'de', notation => 'unique' );
 # $skos->add_concept( notation => 'x', scopeNote => 'test' );
@@ -74,8 +77,8 @@ $skos = SKOS::Simple->new( notation => 'unique', namespaces => { foo => 'my:id:'
 $id = $skos->add_concept( notation => '0', 'foo:bar' => 'xxx' );
 print $skos->concept_turtle( $id );
 #print 
-use Data::Dumper;
-print Dumper($skos)."\n";
+#use Data::Dumper;
+#print Dumper($skos)."\n";
 
 
 # print $skos->concept_turtle('x', top => 0);

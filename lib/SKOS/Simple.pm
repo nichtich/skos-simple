@@ -17,11 +17,10 @@ our $VERSION = '0.0.8';
 =head1 DESCRIPTION
 
 This module provides a simple class to create and handle classifications,
-thesauri and similar systems in the data model of the Simple Knowledge
-Organization System (SKOS). A detailed specification is available at
-L<http://www.w3.org/TR/skos-reference/>. This modules supports most,
-but not all, features of SKOS and adds some useful constraints, which
-mostly derive from best-practice.
+thesauri and similar systems in Simple Knowledge Organization System (SKOS)
+data model. Most features of SKOS, as specified at 
+L<http://www.w3.org/TR/skos-reference/>, are supported. In addition there
+are some useful constraints, which mostly derive from best-practice.
 
 In contrast to other RDF-related modules, SKOS::Simple does not depend on 
 any non-core Perl modules, so you can install it by just copying one file. 
@@ -41,24 +40,15 @@ them with general RDF and SKOS tools.
   my $skos = SKOS::Simple->new( 
       base  => 'http://example.com/kos/',
       title => 'My little Knowledge Organization System',
-       
   );
 
-  ....
   $skos->add_concept( pref => { en => 'foo', ru => 'baz' } );
   $skos->add_concept( notation => '42.X-23' );
-  ...
 
   print $skos->turtle;
 
-SKOS::Simple only supports a limited set of possible RDF statements.
-To add more RDF data, you can use the L<serializing functions|/FUNCTIONS>:
-
-  use SKOS::Simple qw(:turtle);
-
-  print $skos->turtle;
-
-  .... 
+To add RDF data beyond the SKOS data model, you can use the 
+L<serializing methods|/"EXPORTABLE FUNCTIONS">.
 
 =head1 CURRENT STATE
 
@@ -146,7 +136,7 @@ SKOS::Simple [S2]. Concepts added to a scheme are automatically connected
 to the scheme via C<skos:inScheme> [S3-S4] (only serialized if requested).
 Concepts can be selected as top concepts (C<skos:hasTopConcept> / 
 C<skos:topConceptOf> [S5-S8]). In contrast to the SKOS specification,
-(L<http://www.w3.org/TR/skos-reference/#L2446|see 4.6.3) the top concepts 
+(L<http://www.w3.org/TR/skos-reference/#L2446|see 4.6.3>) the top concepts 
 of a scheme cannot have broader concepts in the same scheme.
 
 Concepts and concept schemes must be disjoint [S9].
@@ -234,17 +224,12 @@ hash that maps language tags to strings.
 =item namespaces
 
 An optional hash with additional namespaces. You can also override standard
-namespaces (e.g. C<< skos => 'http://www.w3.org/2008/05/skos#' >> to
-use another SKOS namespace). All namespaces explicitly specified by 
-this parameter are always included as C<< @prefix >> in the Turtle output.
-
-=item description
-
-...
+namespaces (e.g. C<skos>). All namespaces explicitly specified by this 
+parameter are always included as C<< @prefix >> in the Turtle output.
 
 =item language
 
-...
+Language tag of the default language.
 
 =item hierarchy
 
@@ -253,20 +238,31 @@ At the moment only C<tree> is supported.
 
 =item identity
 
-...
+Specifies which property is used as concept identifier. Possible
+values are C<label> (C<skos:prefLabel>), C<notation> (C<skos:notation>,
+and C<identifier> (C<dc:identifier>). If no value is given, you must
+either specify C<label> or C<notation> as C<unique>.
 
 =item label
 
-...
+Specifies how to encode concept labels. Possible values are C<pref>
+(C<skos:prefLabel>, implied if C<< identify => 'label' >>, C<alt>
+(C<skos:altLabel>, and C<title> (C<dc:title>).
 
 =item notation
 
-...
+Specifies whether to check notations to be unique (C<unique>) and/or
+mandatory (C<mandatory>) per concept. C<< identity => 'notation' >>
+implies C<< notation => 'unique' >>.
 
 =item properties
 
 Additional properties as structured Turtle. Triples with predicates
 C<a>, C<dc:title>, and C<skos:...> are not allowed but removed.
+
+=item description
+
+not supported yet
 
 =back
 
@@ -292,9 +288,11 @@ sub new {
         namespaces  => ($arg{namespaces} || { }), # TODO: count usage (?) 
         language    => ($arg{language} || "en"),  # TODO: check tag
         description => ($arg{description} || ""), # TODO: add
+
         identity    => ($arg{identity} || ""),
         label       => ($arg{label} || ""),
         notation    => ($arg{notation} || ""),
+
     }, $class );
 
     # TODO: croak "base of scheme missing" unless $self->{base};
@@ -302,6 +300,37 @@ sub new {
     croak "scheme must be an URI" unless uri_or_empty($self->{scheme});
     $self->{scheme} = "" if $self->{scheme} eq $self->{base};
 
+    #### identifier, label, notation
+
+    if ( !$self->{identity} ) {
+        if ( $self->{label} eq 'unique' ) {
+            $self->{identity} = 'label';
+        } elsif ( $self->{notation} eq 'unique' ) {
+            $self->{identity} = 'notation';
+        } else {
+            # TODO: do we want this?
+            $self->{identity} = 'label';
+            # croak "concept identification not specified";
+        }
+    } elsif ( !(grep { $self->{identity} eq $_ } qw(label notation identifier)) ) {
+        croak "concept identification must be 'label', 'notation', or 'identifier'";
+    } # NOTE: we may add 'id' (internal id) as another method
+
+    if ( $self->{label} ) {
+        croak "label type must be 'pref', 'alt', or 'title'"
+            unless ( grep { $self->{label} eq $_ } qw(pref alt title) );
+    } else {
+        $self->{label} = 'pref'; # TODO: do we want this default value?
+    }
+
+    if ( $self->{notation} ) {
+        croak "notation type can only be 'unique' or 'mandatory'"
+            unless ( grep { $self->{notation} eq $_ } qw(unique mandatory) );
+    }
+
+=pod
+
+    # set identity, label, and notation
     if ( $self->{notation} eq 'unique' ) {
         $self->{identity} = 'notation' unless $self->{identity}; 
     }
@@ -315,7 +344,7 @@ sub new {
         unless $self->{identity} =~ /^(notation|label)$/;
 
     $self->{ $self->{identity} } = 'unique';
-
+=cut
 
     $self->{namespaces}->{skos} = $NAMESPACES{skos}
         unless $self->{namespaces}->{skos};
@@ -370,107 +399,90 @@ Returns the id of the added or modfied concept.
 
 sub add_concept {
     my $self = shift;
-    my %arg  = @_;
 
-    # only for internal use
-    my $nocheck = delete $arg{_nocheck}; 
-
-    # connections to other concepts
-    my @related   = _values( delete $arg{related} );
-    my @broader   = _values( delete $arg{broader} );
-    my @narrower  = _values( delete $arg{narrower} );
-
-    my $notation  = delete $arg{notation};
-    $notation = "" unless defined $notation;
-
+    # ensures we have an 'id' and 'label' is a hashref
+    my $arg = $self->concept_identification( @_ );
+    my $id = $arg->{id};
+    my $labels = delete $arg->{label};
     my $lang = $self->{language};
 
-    #my @labels    = _values( delete $arg{label} );
-    my $labels = delete $arg{label};
-    if (not defined $labels or $labels eq '') {
-        $labels = { };
-    } elsif( not ref($labels) ) {
-        $labels = { $lang => $labels }; # TODO: array
-    }
+    # TODO: check: Concepts and concept schemes must be disjoint [S9].
 
-    my $prefLabel = $labels->{$lang};
-    $prefLabel = "" unless defined $prefLabel;
+    # only for internal use
+    my $nocheck = delete $arg->{_nocheck}; 
 
-    my $id = $self->concept_id( notation => $notation, label => $labels );
-
-    croak 'Missing ' . $self->{identity} . ' as concept identifier '
-        unless defined $id;
+    # connections to other concepts
+    my @related   = _values( delete $arg->{related} );
+    my @broader   = _values( delete $arg->{broader} );
+    my @narrower  = _values( delete $arg->{narrower} );
+ 
+    #my $id = $self->concept_id( notation => $notation, label => $labels );
 
     my $concept = $self->{concepts}->{$id};
     unless ($self->{concepts}->{$id}) {
         $concept = $self->{concepts}->{$id} = { 
-            notation  => "",
-            label     => [ ],
-            pref      => { },
-            scopeNote => [ ],
-            broader   => { },
-            narrower  => { },
-            related   => { }
+            notation   => "",
+            label      => [ ],
+            pref       => { },
+            broader    => { },
+            narrower   => { },
+            related    => { },
         };
     }
 
-    if ( $self->{identity} eq 'notation' ) {
-        croak 'Concepts must have a notation' if $notation eq '';
-        $concept->{notation} = $notation; # TODO: multiple notations
-    } elsif ( $self->{identity} eq 'label' ) {
-        # croak 'Concepts must have one label' unless @labels == 1;
+    my $notation  = delete $arg->{notation};
+    $notation = "" unless defined $notation;
+
+    my $identifier = delete $arg->{identifier};
+    if ( defined $identifier ) {
+        $concept->{identifier} = $identifier;
+        $self->{uses_dc} = 1;
     }
 
-=head1
-    # label is not id, but unique
-    if ( $self->{label} eq 'unique' and $self->{identity} ne 'label') {
-        if (
-        $concept->{pref}
-                push $concept->{pref}->{$lang} = $prefLabel; # TODO; check if already different!
-        @labels = ();
+    if ( $self->{notation} ) { # 'mandatory' or 'unique'
+        $concept->{notation} = $notation
+            if ( defined $notation and $notation ne '' );
+        croak 'Concepts must have a notation' 
+            if $concept->{notation} eq '';
+        if ( $self->{notation} eq 'unique' ) {
+            # TODO: check uniqueness, if notation is not already the idtype
+            #  croak 'Concepts must be unique per notation' 
+            #      if $self->{u_notation}->{ $notation };
+            # $self->{u_notation}->{ $notation } = $id;
+        }
     }
+    $concept->{notation} = $notation unless $notation eq "";
 
-#        croak 'Concepts must be unique per notation' 
-#            if $self->{u_notation}->{ $notation };
-#        $self->{u_notation}->{ $notation } = $id;
-#    }
+    # TODO: implement pref, alt, and title as label types
+    # push $concept->{pref}->{$lang} = $prefLabel;
 
-    } elsif ( $self->{label} eq 'unique' ) {
-        # TODO: multiple labels
-        croak 'Concepts must have a label' unless @labels;
-        croak 'Concepts must have only one label' if @labels > 1;
+    # croak 'Concepts must have a label' unless @labels;
+    # croak 'Concepts must have only one label' if @labels > 1;
 
-        croak 'Concepts must be unique per notation' 
-            if $self->{u_label}->{ $lang }->{ $labels[0] };
-        $self->{u_label}->{ $lang }->{ $labels[0] } = $id;
-=cut
+    # ...
     
-    my @reverse = ( _nocheck => 1, 'notation' ); # TODO: prefLabel
-
     if (%$labels) {
         push @{ $concept->{label} }, values %{$labels}; # TODO: uniq
     }
 
+    # add documentation/note properties
     foreach my $name ( keys %NOTE_PROPERTIES ) {
-        my @values = _values( delete $arg{$name} );
+        my @values = _values( delete $arg->{$name} );
         if ( @values ) {
             push @{ $concept->{$name} }, @values;
         }
+        # TODO: entail skos:note
     }
 
-    my @scopeNote = _values( delete $arg{scopeNote} ); # scopeNote or note?
-    if (@scopeNote) {
-        push @{ $concept->{scopeNote} }, @scopeNote;
-        # TODO: add [default] language
-        # TODO: entails skos:note
-    }
-
+    # additional constraint of SKOS::Simple
     croak "concept <$id> cannot have broader if it is top concept!"
         if ( @broader && $self->{top}->{$id} );
 
+    # add inverse relations
     foreach my $i (@related) { 
         next if $concept->{related}->{$i};
-        $self->add_concept( related => $id, @reverse, $i ) unless $nocheck;
+        $self->add_concept( related => $id, _nocheck => 1, id => $i ) 
+            unless $nocheck;
         $concept->{related}->{$i} = 1;
     }
     foreach my $i (@broader) {
@@ -480,18 +492,18 @@ sub add_concept {
                 if %{$concept->{broader}};
         } # TODO: if 'multi[tree]': detect loops
         
-        $self->add_concept( narrower => $id, @reverse, $i ) unless $nocheck;
+        $self->add_concept( narrower => $id, _nocheck => 1, id => $i ) 
+            unless $nocheck;
         $concept->{broader}->{$i} = 1;
     }
     foreach my $i (@narrower) {
         next if $concept->{narrower}->{$i};
-        $self->add_concept( broader => $id, @reverse, $i ) unless $nocheck;
+        $self->add_concept( broader => $id, _nocheck => 1, id => $i ) 
+            unless $nocheck;
         $concept->{narrower}->{$i} = 1;
     }
 
     return $id;
-    
-    # TODO: check: Concepts and concept schemes must be disjoint [S9].
 }
 
 =head2 top_concepts ( [ @ids ] )
@@ -591,62 +603,38 @@ sub add_hashref {
     }
 }
 
-=head2 concept_id ( notation => $notation | label => $label )
+=head2 concept_id ( %properties )
 
 Returns the identifier of a concept with given notation and/or label.
 It is not checked whether the given concept exists in this scheme.
+Returns either a string or an empty string if no identifier is given.
 
 =cut
 
 sub concept_id {
-    my ($self,%arg) = @_;
-
-    return unless %arg;
-
-    if ( $self->{identity} eq 'notation' ) {
-        return unless defined $arg{notation};
-        return if $arg{notation} eq '';
-        return $arg{notation};
-    } else { # $self->{identity} eq 'label'
-        my $label = $arg{label};
-
-        if ( ref($label) and ref($label) eq 'HASH' ) {
-            $label = $label->{ $self->{language} };
-        }
-
-        $label = undef if (defined $label and $label eq '');
-
-        return $label;
-    }
+    my $id = "";
+    eval {
+        my $arg = shift->concept_identification( @_ );
+        $id = $arg->{id};
+    };
+    return $id;
 }
 
-=head2 has_concept ( $id )
+=head2 has_concept ( $id | %properties )
 
-Returns whether there is a concept of the given id.
+Returns whether there is a concept of a given id. Instead of providing
+a specific concept id you can also use unique properties (C<notation>,
+C<label>, C<identifier>) depending on the scheme's settings.
 
 =cut
 
 sub has_concept {
     my $self = shift;
-    my %arg = (@_ == 1) ? ( id => $_[0] ) : @_;
-    return exists $self->{concepts}->{ $arg{id} }
-        if defined $arg{id};
-
-    # NOTE: We may later extend the method to ask by other properties 
-    # (URI, broader, narrower, is-top, etc.)
+    my $id = (@_ == 1) ? $_[0] : $self->concept_id( @_ );
+    return exists $self->{concepts}->{$id}
+        if defined $id and $id ne "";
 
     return 0;
-}
-
-=head2 size
-
-Returns the total number of concepts.
-
-=cut
-
-sub size {
-    my $self = shift;
-    return scalar keys %{ $self->{concepts} };
 }
 
 =head2 concepts
@@ -660,6 +648,79 @@ sub concepts {
     return keys %{ $self->{concepts} };
 }
 
+=head2 size
+
+Returns the total number of concepts.
+
+=cut
+
+sub size {
+    my $self = shift;
+    return scalar keys %{ $self->{concepts} };
+}
+
+=head2 concept_identification ( %properties )
+
+Checks and possibly expands some given concept properties to ensure that
+there is a valid concept id. Returns a hashref that contains the concept
+id (field C<id>) or croaks. Depending on the identification settings of
+this scheme you must pass at least one of C<notation>, C<label>, 
+C<identifier>, C<id>.
+
+=cut
+
+sub concept_identification {
+    my ($self, %arg) = @_;
+
+    my $idtype = $self->{identity};
+    my $lang   = $self->{language};
+
+    # expand 'label' parameter to be a hashref
+    # TODO: also check / set / expand $arg{pref}
+    if ( defined($arg{label}) ) {
+        unless ( ref($arg{label}) ) {
+            $arg{label} = { $lang => $arg{label} };
+        }
+    } else {
+        $arg{label} = { $lang => "" };
+    }
+
+    $arg{id} = "" unless defined $arg{id};
+    $arg{$idtype} = "" unless defined $arg{$idtype};
+
+    if ( $arg{id} ne "" ) {
+        # derive property from id
+        if ( $idtype eq 'notation' or $idtype eq 'identifier' ) {
+            if ( $arg{$idtype} ne "" and $arg{$idtype} ne $arg{id} ) {
+                croak "concept id cannot be both '" . $arg{id}
+                    . "' and '" . $arg{$idtype} . "'";
+            }
+            $arg{$idtype} = $arg{id};
+        } else { # $idtype eq 'label'
+            my $l = $arg{label}->{$lang};
+            croak "concept id cannot be both '" . $arg{id}  . "' and label '$l'"
+                if ( $l ne "" and $l ne $arg{id} );
+
+            $arg{label}->{$lang} = $arg{id};
+        }
+    } else {
+        # derive id from property (TODO: url-encode if needed)
+        if ( $idtype eq 'notation' ) {
+            $arg{id} = $arg{notation};
+        } elsif ( $idtype eq 'identifier' ) {
+            $arg{id} = $arg{identifier};
+        } else { # $idtype eq 'label'
+            $arg{id} = $arg{label}->{ $lang }; 
+        }
+    }
+
+    croak "Missing $idtype as concept identifier" if $arg{id} eq "";
+
+    # TODO: check $arg{id} for well-formedness as URI part
+
+    return \%arg;
+}
+
 =head1 SERIALIZATION METHODS
 
 The following methods serialize the concept scheme or parts of it in 
@@ -667,7 +728,7 @@ L<Terse RDF Triple language|http://www.w3.org/TeamSubmission/turtle/>
 (RDF/Turtle). A valid serialization must start with some namespace
 declarations, and a base declaration. Both are only included by the
 C<turtle> method, but they can also be requested independently.
-All return values end with a newline unless they are the empty string.
+All return values end with a newline unless it is the empty string.
 
 A later version may also support 'hashref' format for serializing.
 
@@ -705,7 +766,11 @@ Returns Turtle syntax namespace declarations for this scheme.
 
 sub namespaces_turtle {
     my $self = shift;
-   
+
+    if ( $self->{uses_dc} and not $self->{namespaces}->{dc} ) {
+        $self->{namespaces}->{dc} = $NAMESPACES{dc};
+    }
+
     my @lines;
     foreach my $name (keys %{$self->{namespaces}}) {
         push @lines, "\@prefix $name: <" . $self->{namespaces}->{$name} . "> .";        
@@ -788,7 +853,7 @@ sub concept_turtle {
 
     if ($c->{label}) {
         my $label = $self->turtle_literal( $c->{label}->[0] );
-        $stm{'dc:title'} = $label;
+        $stm{'dc:title'} = $label; # TODO: pref / alt / ...
     }
 
     foreach my $rel (qw(broader narrower related)) {
@@ -810,7 +875,13 @@ sub concept_turtle {
 
     # [S7] skos:topConceptOf is a sub-property of skos:inScheme
     if ( $opt{scheme} - $is_top > 0 ) {
+        # TODO: with 'lean' => 1 and not top => 0
+        # this is implied if the concept is topConcept
         $stm{'skos:inScheme'} = '<' . $self->{scheme} . '>';
+    }
+
+    if ( defined $c->{identifier} and $c->{identifier} ne "" ) {
+        $stm{'dc:identifier'} = turtle_literal( $c->{identifier} );
     }
 
     # TODO: S17 - infer skos:note only if requested
@@ -837,11 +908,13 @@ sub concepts_turtle {
         keys %{ $self->{concepts} } );
 }
 
-=head1 EXPORTED FUNCTIONS
+=head1 EXPORTABLE FUNCTIONS
 
 The following functions can be exported on request. The export tags
-C<:turtle> and C<:all> can be used to export all C<turtle_...> or 
-all functions.
+C<:turtle> and C<:all> can be used to export all C<turtle_...> functions
+or all functions. Note that C<turtle_...> functions do not implement a full
+Turtle serializer because they don't check whether the URIs, QNames, and/or
+language tags are valid.
 
 =head2 skos
 
@@ -853,12 +926,14 @@ sub skos {
     SKOS::Simple->new(@_)
 }
 
-=pod
+=head2 turtle_statement ( $subject, $predicate => $object [, ... ] )
 
-The following methods Turtle serialization can also be exported as functions 
-with the C<:turtle> include parameter. Note that they do not implement a full
-Turtle serializer because they don't check whether the URIs, QNames, and/or
-language tags are valid. The followinge example shows some ways of use:
+Returns a (set of) RDF statements in Turtle syntax. Subject and predicate
+parameters must be strings. Object parameters must either be strings or
+arrays of strings. This function strips undefined values and empty strings,
+but it does not further check or validate parameter values.
+
+The followinge example shows some methods how you can pass statements:
 
   print turtle_statement( 
     "<$uri>",
@@ -870,15 +945,8 @@ language tags are valid. The followinge example shows some ways of use:
       "dc:date" => turtle_literal( "1987", type => "xs:gYear" ),
       "dc:title" =>
           { en => "Understanding Computers and Cognition" },
-      "dc:decription" => undef
+      "dc:decription" => undef  # will be ignored
   );
-
-=head2 turtle_statement ( $subject, $predicate => $object [, ... ] )
-
-Returns a (set of) RDF statements in Turtle syntax. Subject and predicate
-parameters must be strings. Object parameters must either be strings or
-arrays of strings. This function strips undefined values and empty strings,
-but it does not further check or validate parameter values.
 
 =cut
 
@@ -910,7 +978,8 @@ sub turtle_statement {
 
 Returns a literal string escaped in Turtle syntax. You can optionally provide
 either a language or a full datatype URI (but their values are not validated).
-Returns the empty string instead of a Turtle value, if $string is undef or ""!
+Returns the empty string instead of a Turtle value, if C<$string> is C<undef>
+or the empty string.
 
 =cut
 
@@ -1043,7 +1112,9 @@ sub is_uri{
     
 }
 
-=head2 uri_or_empty
+=head2 uri_or_empty ( $uri )
+
+Checks whether the passed parameter is either an URI or undefined.
 
 =cut
 
@@ -1057,7 +1128,8 @@ sub uri_or_empty {
 
 The SKOS ontology and its semantics is defined in 
 L<http://www.w3.org/TR/skos-primer> and 
-L<http://www.w3.org/TR/skos-reference>.
+L<http://www.w3.org/TR/skos-reference>. Turtle format
+is specified at http://www.w3.org/TeamSubmission/turtle/.
 
 =head1 AUTHOR
 
@@ -1065,7 +1137,7 @@ Jakob Voss C<< <jakob.voss@gbv.de> >>
 
 =head1 LICENSE
 
-Copyright (C) 2010 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+Copyright (C) 2010,2011 by Verbundzentrale Goettingen (VZG) and Jakob Voss
 
 This library is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself, either Perl version 5.8.8 or, at
