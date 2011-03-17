@@ -5,8 +5,12 @@ use Test::More;
 my $min_version = 0.130;
 eval "use RDF::Trine $min_version";
 eval "use RDF::Trine::Parser" unless $@;
-plan skip_all => "RDF::Trine $min_version required for additional tests"
-    if $@;
+if ( $@  ) {
+    plan skip_all => "RDF::Trine $min_version required for additional tests";
+    exit;
+} else {
+    plan 'no_plan';
+}
 
 use SKOS::Simple;
 
@@ -37,4 +41,4 @@ foreach my $file ( keys %files ) {
     print $skos->turtle;
 }
 
-
+ok(1);

@@ -143,19 +143,30 @@ Concepts and concept schemes must be disjoint [S9].
 
 =item L<http://www.w3.org/TR/skos-reference/#labels|Lexical Labels>
 
-=item L<http://www.w3.org/TR/skos-reference/#notations|Notations>
-
 C<skos:prefLabel>, C<skos:altLabel>, C<skos:hiddenLabel> ...
 
+In addition this module supports two common label properties that are not
+explicitly included in the SKOS reference:
+
+C<dc:title>, C<dc:identifier> 
+
+C<rdfs:label> as super-property of C<skos:prefLabel>, C<skos:altLabel>, 
+and C<skos:hiddenLabel> will be supported in a later version.
+
+=item L<http://www.w3.org/TR/skos-reference/#notations|Notations>
+
 C<skos:notation> ...
-
-In addition this module supports three common label properties:
-
-C<dc:identifier>, C<dc:title>, C<rdfs:label> ...
 
 =cut
 
 our %LABEL_PROPERTIES = map { $_ => 1 } qw(prefLabel altLabel hiddenLabel);
+
+our %LABEL_TYPES = (
+    pref   => 'skos:prefLabel',   # TODO: sub-property of rdfs:label
+    alt    => 'skos:altLabel',    # dito
+    hidden => 'skos:hiddenLabel', # dito
+    title  => 'dc:title'
+);
 
 =item L<http://www.w3.org/TR/skos-reference/#semantic-relations|Semantic Relations>
 
@@ -198,6 +209,11 @@ probably be implemented in another module.
 
 our %MAPPING_PROPERTIES = map { $_ => 1 } qw(mappingRelation 
     closeMatch exactMatch broadMatch narrowMatch relatedMatch);
+
+# dublin core elements
+our %DC_PROPERTIES = map { $_ => "dc:$_" } 
+    qw(contributor coverage creator date description format identifier 
+       language publisher relation rights source subject title type);
 
 =head1 METHODS
 
@@ -246,9 +262,10 @@ either specify C<label> or C<notation> as C<unique>.
 =item label
 
 Specifies how to encode concept labels. Possible values are C<pref>
-(C<skos:prefLabel>, implied if C<< identify => 'label' >>, C<alt>
-(C<skos:altLabel>, and C<title> (C<dc:title>).
-
+(C<skos:prefLabel>), which is the default value and implied if 
+C<< identify => 'label' >>, C<alt> (C<skos:altLabel>, 
+C<hidden> (C<skos:hiddenLabel>) and C<title> (C<dc:title>).
+ 
 =item notation
 
 Specifies whether to check notations to be unique (C<unique>) and/or
@@ -290,7 +307,7 @@ sub new {
         description => ($arg{description} || ""), # TODO: add
 
         identity    => ($arg{identity} || ""),
-        label       => ($arg{label} || ""),
+        label       => ($arg{label} || ""), # label type
         notation    => ($arg{notation} || ""),
 
     }, $class );
@@ -317,10 +334,10 @@ sub new {
     } # NOTE: we may add 'id' (internal id) as another method
 
     if ( $self->{label} ) {
-        croak "label type must be 'pref', 'alt', or 'title'"
-            unless ( grep { $self->{label} eq $_ } qw(pref alt title) );
+        croak "label type must be one of " . join(", ", keys %LABEL_TYPES)
+            unless ( grep { $self->{label} eq $_ } keys %LABEL_TYPES );
     } else {
-        $self->{label} = 'pref'; # TODO: do we want this default value?
+        $self->{label} = 'pref';
     }
 
     if ( $self->{notation} ) {
@@ -328,23 +345,6 @@ sub new {
             unless ( grep { $self->{notation} eq $_ } qw(unique mandatory) );
     }
 
-=pod
-
-    # set identity, label, and notation
-    if ( $self->{notation} eq 'unique' ) {
-        $self->{identity} = 'notation' unless $self->{identity}; 
-    }
-
-    if ( $self->{label} eq 'unique' ) {
-        $self->{identity} = 'label' unless $self->{identity}; 
-    }
-
-    $self->{identity} = 'label' if $self->{identity} eq '';
-    croak "Concepts must have identity by 'notation' or by 'label'"
-        unless $self->{identity} =~ /^(notation|label)$/;
-
-    $self->{ $self->{identity} } = 'unique';
-=cut
 
     $self->{namespaces}->{skos} = $NAMESPACES{skos}
         unless $self->{namespaces}->{skos};
@@ -403,7 +403,6 @@ sub add_concept {
     # ensures we have an 'id' and 'label' is a hashref
     my $arg = $self->concept_identification( @_ );
     my $id = $arg->{id};
-    my $labels = delete $arg->{label};
     my $lang = $self->{language};
 
     # TODO: check: Concepts and concept schemes must be disjoint [S9].
@@ -416,14 +415,10 @@ sub add_concept {
     my @broader   = _values( delete $arg->{broader} );
     my @narrower  = _values( delete $arg->{narrower} );
  
-    #my $id = $self->concept_id( notation => $notation, label => $labels );
-
     my $concept = $self->{concepts}->{$id};
     unless ($self->{concepts}->{$id}) {
         $concept = $self->{concepts}->{$id} = { 
             notation   => "",
-            label      => [ ],
-            pref       => { },
             broader    => { },
             narrower   => { },
             related    => { },
@@ -453,16 +448,12 @@ sub add_concept {
     }
     $concept->{notation} = $notation unless $notation eq "";
 
-    # TODO: implement pref, alt, and title as label types
-    # push $concept->{pref}->{$lang} = $prefLabel;
-
-    # croak 'Concepts must have a label' unless @labels;
-    # croak 'Concepts must have only one label' if @labels > 1;
-
-    # ...
-    
-    if (%$labels) {
-        push @{ $concept->{label} }, values %{$labels}; # TODO: uniq
+    # add label properties
+    foreach my $type ( keys %LABEL_TYPES ) {
+        my $label = delete $arg->{$type};
+        next unless defined $label;
+        # TODO: add to existing labels, check for unqiueness, mandatory etc.
+        $concept->{$type} = $label;
     }
 
     # add documentation/note properties
@@ -672,17 +663,27 @@ C<identifier>, C<id>.
 sub concept_identification {
     my ($self, %arg) = @_;
 
-    my $idtype = $self->{identity};
-    my $lang   = $self->{language};
+    my $idtype    = $self->{identity};
+    my $labeltype = $self->{label};
+    my $lang      = $self->{language};
 
-    # expand 'label' parameter to be a hashref
-    # TODO: also check / set / expand $arg{pref}
+    # rename 'label' parameter if given
     if ( defined($arg{label}) ) {
-        unless ( ref($arg{label}) ) {
-            $arg{label} = { $lang => $arg{label} };
+        # TODO: what if arg{labeltype} is also given? better croak
+        $arg{$labeltype} = $arg{label};
+    }
+
+    # set a label's default language if only a string was given
+    # expand label property to be a hashref on undef
+    foreach my $type ( keys %LABEL_TYPES ) {
+        next unless defined $arg{$type};
+        unless ( ref($arg{$type}) ) { # HASH
+            if ( $arg{$type} eq "" ) {
+                delete $arg{$type};
+            } else {
+                $arg{$type} = { $lang => $arg{$type} };
+            }
         }
-    } else {
-        $arg{label} = { $lang => "" };
     }
 
     $arg{id} = "" unless defined $arg{id};
@@ -710,7 +711,7 @@ sub concept_identification {
         } elsif ( $idtype eq 'identifier' ) {
             $arg{id} = $arg{identifier};
         } else { # $idtype eq 'label'
-            $arg{id} = $arg{label}->{ $lang }; 
+            $arg{id} = $arg{$labeltype}->{ $lang } if $arg{$labeltype}; 
         }
     }
 
@@ -845,25 +846,22 @@ sub concept_turtle {
 
     # TODO: Support multiple notations
     if ( $c->{notation} ne '' ) {
-        $stm{'skos:notation'} = $self->turtle_literal( $c->{notation} );
+        $stm{'skos:notation'} = turtle_literal( $c->{notation} );
     }
 
-    # TODO: prefLabel subPropertyOf rdfs:label ?
-    $stm{'skos:prefLabel'} = $c->{pref};
-
-    if ($c->{label}) {
-        my $label = $self->turtle_literal( $c->{label}->[0] );
-        $stm{'dc:title'} = $label; # TODO: pref / alt / ...
+    # Concept Labels: pref, alt, hidden, title
+    while ( my ($type,$property) = each %LABEL_TYPES ) {
+        next unless $c->{$type};
+        my $label = turtle_literal_list( $c->{$type} );
+        $stm{$property} = $label;
+        # TODO: entail rdfs:label if requested (pref, alt, hidden)
     }
+
 
     foreach my $rel (qw(broader narrower related)) {
         next unless %{$c->{$rel}};
         $stm{"skos:$rel"} = [ map { "<$_>" } keys %{$c->{$rel}} ];
     }
-
-    $stm{'skos:scopeNote'} = [ 
-        map { $self->turtle_literal( $_ ) } @{ $c->{scopeNote} } 
-    ];
 
     my $is_top = 0;
     if ( $opt{top} ) { 
