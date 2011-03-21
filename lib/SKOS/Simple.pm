@@ -12,7 +12,7 @@ SKOS::Simple - SKOS with entailment and without package dependencies
 use Scalar::Util qw(blessed reftype);
 use Carp;
 
-our $VERSION = '0.0.8';
+our $VERSION = '0.0.9';
 
 =head1 DESCRIPTION
 
@@ -74,7 +74,8 @@ All concepts must be identifyable by a unique string, that is refered
 to as the concept identifier. The URI of a concept is build of the
 common URI prefix and the concept's identifier. The identifier must
 either be the skos:notation (so every concept must have one), or the
-skos:prefLabel in one fixed language for all concepts.
+skos:prefLabel in one fixed language for all concepts. The only exception
+to this rule are filters, for instance to uri-encode the prefLabel/notation.
 
 =item
 
@@ -109,6 +110,7 @@ our %NAMESPACES = (
    rdf     => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
    skos    => 'http://www.w3.org/2004/02/skos/core#',
    dc      => 'http://purl.org/dc/elements/1.1/',
+   void    => 'http://rdfs.org/ns/void#',
 #   dct  => 'http://purl.org/dc/terms/',
 #   xsd  => 'http://www.w3.org/2001/XMLSchema#',
 #   foaf => 'http://xmlns.com/foaf/0.1/',
@@ -292,6 +294,7 @@ sub new {
     my $self = bless( { 
         concepts    => { },
 
+        prop        => { },
         related     => { },
         top         => { }, # ids of top concepts
 
@@ -305,6 +308,8 @@ sub new {
         namespaces  => ($arg{namespaces} || { }), # TODO: count usage (?) 
         language    => ($arg{language} || "en"),  # TODO: check tag
         description => ($arg{description} || ""), # TODO: add
+
+        idfilter    => $arg{idfilter} || sub { $_[0]; }, # TODO: uri-escape
 
         identity    => ($arg{identity} || ""),
         label       => ($arg{label} || ""), # label type
@@ -345,9 +350,13 @@ sub new {
             unless ( grep { $self->{notation} eq $_ } qw(unique mandatory) );
     }
 
+    # mandatory namespaces
 
     $self->{namespaces}->{skos} = $NAMESPACES{skos}
         unless $self->{namespaces}->{skos};
+
+    $self->{namespaces}->{void} = $NAMESPACES{void}
+        if ( $arg{void} and not $self->{namespaces}->{void} );
 
     $self->{namespaces}->{dc} = $NAMESPACES{dc}
         if ( ($self->{title} || $self->{description}) && not $self->{namespaces}->{dc});
@@ -358,9 +367,32 @@ sub new {
         $self->{title} = { $lang => $self->{title} };
     }
 
-    $self->{prop} = {
-        'a' => 'skos:ConceptScheme' # TODO: allow additional types
-    };
+    my @types = ('skos:ConceptScheme');
+
+    if ( my $pattern = delete $arg{idpattern} ) {
+        $self->{idregexp}  = qr/^$pattern$/; 
+        my $basepattern = $self->{base};
+        $basepattern =~ s/[.]/\\./g;
+        $basepattern =~ s/[?]/\\?/g; # TODO: escape more nasty stuff in base URI
+        $self->{idpattern} = "^$basepattern$pattern\$";
+    }
+
+    # TODO: license (dct:license) 
+
+    if ( $arg{void} ) {
+        $self->{void} = 1; # TODO: document this
+        push @types, 'void:Dataset' if $arg{void};
+        $self->{prop}->{'void:uriSpace'} = turtle_uri($self->{base});
+        $self->{prop}->{'void:rootResource'} = turtle_uri($self->{base});
+        if ( $self->{idpattern} ) {
+            $self->{prop}->{'void:uriRegexPattern'} = turtle_literal($self->{idpattern});
+        }
+    }
+
+    # TODO: allow additional types
+
+    $self->{prop}->{a} = \@types;
+
 
     # additional properties
     if ( $arg{properties} ) {
@@ -713,6 +745,13 @@ sub concept_identification {
         } else { # $idtype eq 'label'
             $arg{id} = $arg{$labeltype}->{ $lang } if $arg{$labeltype}; 
         }
+    }
+
+    $arg{id} = $self->{idfilter}->( $arg{id} );
+
+    if ( $self->{idregexp} ) {
+        croak "identifier " . $arg{id} . " does not fit to pattern"
+            unless $arg{id} =~ $self->{idregexp};
     }
 
     croak "Missing $idtype as concept identifier" if $arg{id} eq "";

@@ -2,11 +2,13 @@ use strict;
 use warnings;
 use Test::More;
 
-my $min_version = 0.130;
-eval "use RDF::Trine $min_version";
+my ($v_trine,$v_test) = (0.130,0.20);
+eval "use RDF::Trine $v_trine";
 eval "use RDF::Trine::Parser" unless $@;
+eval "use Test::RDF $v_test" unless $@;
 if ( $@  ) {
-    plan skip_all => "RDF::Trine $min_version required for additional tests";
+    plan skip_all => 
+        "RDF::Trine $v_trine and Test::RDF $v_test required";
     exit;
 } else {
     plan 'no_plan';
@@ -14,6 +16,17 @@ if ( $@  ) {
 
 use SKOS::Simple;
 
+my @examples = qw(iconclass); 
+
+foreach my $name (@examples) {
+    diag("$name example");
+    my $skos = do "t/data/$name.pl";
+    my $file = "t/data/$name.ttl";
+    my $ttl = do { local ( @ARGV, $/ ) = $file; <> };
+    is_rdf ($skos->turtle, 'turtle', $ttl, 'turtle', 'as expected: '.$file );
+}
+
+__END__
 my %files = (
 #    't100.nt' => {
 #        'properties' => { 
@@ -41,4 +54,3 @@ foreach my $file ( keys %files ) {
     print $skos->turtle;
 }
 
-ok(1);

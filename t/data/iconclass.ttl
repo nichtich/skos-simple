@@ -1,0 +1,45 @@
+# Some concepts from ICONCLASS 
+
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix void: <http://rdfs.org/ns/void#> .
+
+@base <http://iconclass.org/rkd/> .
+
+<> void:rootResource <http://iconclass.org/rkd/> ;
+    a skos:ConceptScheme, void:Dataset ;
+    void:uriRegexPattern "^http://iconclass\\.org/rkd/[0-9]([0-9]([A-IK-Z]([0-9]+)?)?)?(%28%2B[0-9]+%29)?$" ;
+    skos:hasTopConcept <4> ;
+    void:uriSpace <http://iconclass.org/rkd/> .
+
+<49M9%28%2B8%29> a skos:Concept ;
+    skos:inScheme <> ;
+    skos:prefLabel "public library (+ plagiary ~ science)"@en ;
+    skos:broader <49M9> ;
+    skos:notation "49 M 9 (+8)" .
+
+<4> a skos:Concept ;
+    skos:notation "4" ;
+    skos:narrower <49> ;
+    skos:topConceptOf <> .
+
+<49> a skos:Concept ;
+    skos:inScheme <> ;
+    skos:prefLabel "Society, Civilization, Culture"@en ;
+    skos:broader <4> ;
+    skos:notation "49" ;
+    skos:narrower <49M> .
+
+<49M> a skos:Concept ;
+    skos:inScheme <> ;
+    skos:prefLabel "education, science and learning"@en ;
+    skos:broader <49> ;
+    skos:notation "49 M" ;
+    skos:narrower <49M9> .
+
+<49M9> a skos:Concept ;
+    skos:inScheme <> ;
+    skos:prefLabel "public library"@en ;
+    skos:broader <49M> ;
+    skos:notation "49M9" ;
+    skos:narrower <49M9%28%2B8%29> .
+
