@@ -16,43 +16,14 @@ if ( $@  ) {
 
 use SKOS::Simple;
 
-my @examples = qw(iconclass); 
+my @examples = qw(iconclass thesoz); 
 
 foreach my $name (@examples) {
     diag("$name example");
     my $skos = eval { require "t/data/$name.pl"; };
-    isa_ok( $skos, 'SKOS::Simple' ) or next;
+    isa_ok( $skos, 'SKOS::Simple' );
     my $file = "t/data/$name.ttl";
     my $ttl = do { local ( @ARGV, $/ ) = $file; <> };
     ok ( $skos ) &&
     is_rdf ($skos->turtle, 'turtle', $ttl, 'turtle', 'as expected: '.$file );
 }
-
-__END__
-my %files = (
-#    't100.nt' => {
-#        'properties' => { 
-#            base => 'http://www.museumsvokabular.de/museumvok/moebel/',
-#            notation => 'unique',
-#        }
-#    },
-#    't/data/systematik-moebel.nt' => {
-#        'properties' => { 
-#            base => 'http://www.museumsvokabular.de/museumvok/moebel/',
-#        }
-#    }
-);
-
-foreach my $file ( keys %files ) {
-    my $model = RDF::Trine::Model->new;
-
-    print "parsing SKOS data ...\n";
-    RDF::Trine::Parser->parse_file_into_model( "file://$file", $file, $model );
-    my $hash = $model->as_hashref;
-
-    my $skos = SKOS::Simple->new( %{$files{$file}->{properties}} );
-    $skos->add_hashref( $hash );
-
-    print $skos->turtle;
-}
-

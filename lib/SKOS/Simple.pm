@@ -61,12 +61,12 @@ our %NAMESPACES = (
    rdf     => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
    skos    => 'http://www.w3.org/2004/02/skos/core#',
    dc      => 'http://purl.org/dc/elements/1.1/',
+   foaf    => 'http://xmlns.com/foaf/0.1/',
    void    => 'http://rdfs.org/ns/void#',
-#   dct  => 'http://purl.org/dc/terms/',
-#   xsd  => 'http://www.w3.org/2001/XMLSchema#',
-#   foaf => 'http://xmlns.com/foaf/0.1/',
-#   skosxl  => 'http://www.w3.org/2008/05/skos-xl#'
-#   owl  => 'http://www.w3.org/2002/07/owl#',
+   dct     => 'http://purl.org/dc/terms/',
+   xsd     => 'http://www.w3.org/2001/XMLSchema#',
+   skosxl  => 'http://www.w3.org/2008/05/skos-xl#',
+   owl     => 'http://www.w3.org/2002/07/owl#',
 );
 
 =head1 SKOS CONFORMANCE
@@ -250,7 +250,7 @@ Language tag of the default language. By default set to C<en>.
 
 =item hierarchy
 
-Either C<tree> or C<multi> or the empty string for no hierarchy check
+Either C<tree> or C<thesaurus> or the empty string for no hierarchy check
 (default). At the moment only C<tree> is supported.
 
 =item identity
@@ -300,7 +300,7 @@ sub new {
         u_notation => { },
         u_label    => { },
 
-        hierarchy   => ($arg{hierarchy} || ""), # tree|multi|
+        hierarchy   => ($arg{hierarchy} || ""), # tree|thesaurus|
         base        => ($arg{base} || ""),
         scheme      => ($arg{scheme} || ""),
         title       => ($arg{title} || ""),
@@ -392,12 +392,10 @@ sub new {
 
     $self->{prop}->{a} = \@types;
 
-
     # additional properties
     if ( $arg{properties} ) {
         my $p = $arg{properties};
         my $a = delete $p->{a};
-        my $dct = delete $p->{'dc:title'};
 
         # TODO: also filter other namespaces and full URI forms
         my @s = grep { $_ =~ /skos:/ } keys %$p;
@@ -407,6 +405,17 @@ sub new {
             $self->{prop}->{$key} = $value;
         }
     }
+
+    $self->{prop}->{'dc:title'} = 
+        $self->{title} eq '' ? '' : turtle_literal_list( $self->{title} );
+
+    my $page = (delete $arg{page} || "");
+
+    $self->{prop}->{'foaf:page'} = 
+        $page eq '' ? '' : turtle_uri( $page );
+
+    $self->{namespaces}->{foaf} = $NAMESPACES{foaf}
+        if ( $page ne "" and not $self->{namespaces}->{foaf} );
 
     return $self;
 }
@@ -634,16 +643,18 @@ sub concept_identification {
     my $labeltype = $self->{label};
     my $lang      = $self->{language};
 
+    $arg{label} = '' unless defined $arg{label};
+
     # rename 'label' parameter if given
-    if ( defined($arg{label}) ) {
+    if ( $arg{label} ne '' ) {
         # TODO: what if arg{labeltype} is also given? better croak
         $arg{$labeltype} = $arg{label};
     }
 
     # set a label's default language if only a string was given
     # expand label property to be a hashref on undef
-    foreach my $type ( keys %LABEL_TYPES ) {
-        next unless defined $arg{$type};
+    foreach my $type ( 'label', keys %LABEL_TYPES ) {
+        next unless defined $arg{$type} and $arg{$type} ne '';
         unless ( ref($arg{$type}) ) { # HASH
             if ( $arg{$type} eq "" ) {
                 delete $arg{$type};
@@ -653,7 +664,7 @@ sub concept_identification {
         }
     }
 
-    $arg{id} = "" unless defined $arg{id};
+    $arg{id}      = "" unless defined $arg{id};
     $arg{$idtype} = "" unless defined $arg{$idtype};
 
     if ( $arg{id} ne "" ) {
@@ -665,9 +676,10 @@ sub concept_identification {
             }
             $arg{$idtype} = $arg{id};
         } else { # $idtype eq 'label'
+            $arg{label} = { } if $arg{label} eq '';  
             my $l = $arg{label}->{$lang};
             croak "concept id cannot be both '" . $arg{id}  . "' and label '$l'"
-                if ( $l ne "" and $l ne $arg{id} );
+                if ( defined $l and $l ne "" and $l ne $arg{id} );
 
             $arg{label}->{$lang} = $arg{id};
         }
@@ -774,12 +786,8 @@ A later version may also support 'hashref' format for serializing.
 =head2 turtle ( [ %options ] )
 
 Returns a full Turtle serialization of this concept scheme.
-The return value is equivalent to:
-
-    $skos->namespaces_turtle .
-    $skos->base_turtle .
-    $skos->scheme_turtle .
-    $skos->concepts_turtle
+The return value is equivalent to calling C<namespaces_turtle>,
+C<base_turtle>, C<scheme_turtle>, and C<concepts_turtle>.
 
 The parameter C<< lean => 1 >> enables a lean serialization, which 
 does not include infereable RDF statements. Other parameters are
@@ -790,11 +798,11 @@ passed to C<scheme_turtle> and C<concepts_turtle> as well.
 sub turtle {
     my ($self,%opt) = @_;
 
-    return 
-        $self->namespaces_turtle .
-        $self->base_turtle .
-        $self->scheme_turtle( %opt ) .
-        $self->concepts_turtle( %opt );
+    return join( "\n", 
+        $self->namespaces_turtle,
+        $self->base_turtle ,
+        $self->scheme_turtle( %opt ) ,
+        $self->concepts_turtle( %opt ) );
 }
 
 =head2 namespaces_turtle
@@ -845,9 +853,6 @@ serializing the C<skos:hasTopConcept> property.
 sub scheme_turtle {
     my ($self,%opt) = @_;
     $opt{top} = 1 unless exists $opt{top};
-
-    $self->{prop}->{'dc:title'} = 
-        $self->{title} eq '' ? '' : turtle_literal_list( $self->{title} );
 
     # note that lean => 1 does not imply top => 0 !
     if ( $opt{top} ) { 

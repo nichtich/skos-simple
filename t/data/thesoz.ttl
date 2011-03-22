@@ -1,0 +1,23 @@
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix dc: <http://purl.org/dc/elements/1.1/> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+@base <http://lod.gesis.org/thesoz/concept/> .
+
+<http://lod.gesis.org/thesoz/> a skos:ConceptScheme ;
+    foaf:page <http://www.gesis.org/en/services/tools-standards/social-science-thesaurus/> ;
+    skos:hasTopConcept <10039265>, <10039266> ;
+    dc:title "TheSoz Thesaurus for the Social Sciences"@de .
+
+<10039265> a skos:Concept ;
+    dc:identifier "10039265" ;
+    skos:prefLabel "librarianship"@en, "Bibliothekswesen"@de ;
+    skos:related <10039266> ;
+    skos:topConceptOf <http://lod.gesis.org/thesoz/> .
+
+<10039266> a skos:Concept ;
+    dc:identifier "10039266" ;
+    skos:prefLabel "documentation system"@en, "Dokumentationswesen"@de ;
+    skos:related <10039265> ;
+    skos:altLabel "documentation center"@en, "Dokumentationseinrichtung"@de ;
+    skos:topConceptOf <http://lod.gesis.org/thesoz/> .
