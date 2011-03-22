@@ -13,3 +13,4 @@ t/data/iconclass.pl
 t/data/iconclass.ttl
 t/pod-coverage.t
 t/pod.t
+META.yml

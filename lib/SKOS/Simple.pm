@@ -40,62 +40,13 @@ them with general RDF and SKOS tools.
   my $skos = SKOS::Simple->new( 
       base  => 'http://example.com/kos/',
       title => 'My little Knowledge Organization System',
+      hierarchy => 'tree' # check classification constraints
   );
 
   $skos->add_concept( pref => { en => 'foo', ru => 'baz' } );
   $skos->add_concept( notation => '42.X-23' );
 
   print $skos->turtle;
-
-To add RDF data beyond the SKOS data model, you can use the 
-L<serializing methods|/"EXPORTABLE FUNCTIONS">.
-
-=head1 CURRENT STATE
-
-The current version of this module aims B<at classifications only>! 
-Support for thesauri will be implemented later (or just write your 
-own patch and send me for inclusion in SKOS::Simple).
-
-=head1 ASSUMPTIONS
-
-An instance of SKOS::Simple holds exactely one skos:ConceptScheme with
-the following properties:
-
-=over 4
-
-=item 
-
-All concepts share a common URI base. By default this common prefix is
-also the URI of the concept scheme as whole.
-
-=item
-
-All concepts must be identifyable by a unique string, that is refered
-to as the concept identifier. The URI of a concept is build of the
-common URI prefix and the concept's identifier. The identifier must
-either be the skos:notation (so every concept must have one), or the
-skos:prefLabel in one fixed language for all concepts. The only exception
-to this rule are filters, for instance to uri-encode the prefLabel/notation.
-
-=item
-
-Empty strings as literal values are ignored. In most cases you can use
-C<undef> and C<""> interchangeably.
-
-=item
-
-All notations have the same Datatype URI (this may be changed).
-
-=item
-
-The range of all documentation properties (C<skos:note>, C<skos:example>,
-C<skos:scopeNote> etc.) is the plain literals instead of any resource.
-
-=item
-
-...sure there are some more limitations...
-
-=back
 
 =cut
 
@@ -118,46 +69,47 @@ our %NAMESPACES = (
 #   owl  => 'http://www.w3.org/2002/07/owl#',
 );
 
-=head1 SUPPORTED TERMS
+=head1 SKOS CONFORMANCE
 
 The following classes and properties from the SKOS vocabulary are supported.
-The numbers in brackets ([S..]) refer to integrity conditions from the SKOS
-specification.
+The numbers in brackets (B<[Sxx]>) refer to integrity conditions from the 
+SKOS specification. Additional constraints are marked by numbers like B<[Cxx]>.
 
 =over 4
 
-=item L<http://www.w3.org/TR/skos-reference/#concepts|Concepts>
+=item L<Concepts|http://www.w3.org/TR/skos-reference/#concepts>
 
-Instances of C<skos:Concept> [S1] are not represented as objects but as parts
-of a SKOS::Simple object. You can attach them to a scheme with L</add_concept>.
+Instances of C<skos:Concept> B<[S1]> are not represented as objects but as 
+parts of a SKOS::Simple object, so every Concepts must belong to a Concept 
+Scheme B<[C1]>. You can attach Concepts to a scheme with L</add_concept>.
 
-=item L<http://www.w3.org/TR/skos-reference/#notations|Concept Schemes>
+=item L<Concept Schemes|http://www.w3.org/TR/skos-reference/#notations>
 
 Instances of C<skos:ConceptScheme> are implemented as objects of type 
-SKOS::Simple [S2]. Concepts added to a scheme are automatically connected
-to the scheme via C<skos:inScheme> [S3-S4] (only serialized if requested).
+SKOS::Simple B<[S2]>. Concepts added to a scheme are automatically connected
+to the scheme via C<skos:inScheme> B<[S3-S4]> (only serialized if requested).
 Concepts can be selected as top concepts (C<skos:hasTopConcept> / 
-C<skos:topConceptOf> [S5-S8]). In contrast to the SKOS specification,
-(L<http://www.w3.org/TR/skos-reference/#L2446|see 4.6.3>) the top concepts 
-of a scheme cannot have broader concepts in the same scheme.
+C<skos:topConceptOf> B<[S5-S8]>). In contrast to the SKOS specification,
+(L<see 4.6.3|http://www.w3.org/TR/skos-reference/#L2446>) the top concepts 
+of a scheme cannot have broader concepts in the same scheme B<[C2]>.
 
-Concepts and concept schemes must be disjoint [S9].
+Concepts and concept schemes must be disjoint B<[S9]>. This is ensured only
+if you do not use a C<scheme> but a C<base> parameter.
 
-=item L<http://www.w3.org/TR/skos-reference/#labels|Lexical Labels>
+=item L<Lexical Labels|http://www.w3.org/TR/skos-reference/#labels>
 
-C<skos:prefLabel>, C<skos:altLabel>, C<skos:hiddenLabel> ...
-
-In addition this module supports two common label properties that are not
-explicitly included in the SKOS reference:
-
-C<dc:title>, C<dc:identifier> 
+The label types C<skos:prefLabel>, C<skos:altLabel>, and C<skos:hiddenLabel>
+are supported. In addition this module supports the label properties
+C<dc:title> and C<dc:identifier>, which are not explicitly included in the 
+SKOS reference.
 
 C<rdfs:label> as super-property of C<skos:prefLabel>, C<skos:altLabel>, 
 and C<skos:hiddenLabel> will be supported in a later version.
 
-=item L<http://www.w3.org/TR/skos-reference/#notations|Notations>
+=item L<Notations|http://www.w3.org/TR/skos-reference/#notations>
 
-C<skos:notation> ...
+Notations (C<skos:notation>) must be unique per concept and scheme
+B<[C3]>.
 
 =cut
 
@@ -170,7 +122,7 @@ our %LABEL_TYPES = (
     title  => 'dc:title'
 );
 
-=item L<http://www.w3.org/TR/skos-reference/#semantic-relations|Semantic Relations>
+=item L<Semantic Relations|http://www.w3.org/TR/skos-reference/#semantic-relations>
 
 So called "semantic" relations (C<skos:semanticRelation>) include 
 C<skos:broader>, C<skos:narrower>, and C<skos:related>.
@@ -186,12 +138,12 @@ in the same scheme.
 our %RELATION_PROPERTIES = map { $_ => 1 } qw(semanticRelation 
     broader narrower related broaderTransitive narrowerTransitive);
 
-=item L<http://www.w3.org/TR/skos-reference/#notes|Documentation properties>
+=item L<Documentation properties|http://www.w3.org/TR/skos-reference/#notes>
 
 C<skos:note>, C<skos:changeNote>, C<skos:definition>, C<skos:editorialNote>,
 C<skos:example>, C<skos:historyNote> and C<skos:scopeNote> can be used to
 document concepts. In contrast to the SKOS specification their range is 
-limited to literal values.
+limited to literal values B<[C4]>.
 
 =cut
 
@@ -217,11 +169,58 @@ our %DC_PROPERTIES = map { $_ => "dc:$_" }
     qw(contributor coverage creator date description format identifier 
        language publisher relation rights source subject title type);
 
+# To add RDF data beyond the SKOS data model, you can use the 
+# L<serializing methods|/"EXPORTABLE FUNCTIONS">.
+
+=head1 ADDITIONAL CONSTRAINTS
+
+The current version of this module aims at classifications.
+Support for thesauri will be implemented later.
+
+An instance of SKOS::Simple holds exactely one skos:ConceptScheme with
+the following properties:
+
+=over 4
+
+=item *
+
+All concepts share a common URI base. By default this common prefix is
+also the URI of the concept scheme as whole.
+
+=item *
+
+All concepts must be identifyable by a unique string, that is refered
+to as the concept identifier. The URI of a concept is build of the
+common URI prefix and the concept's identifier. The identifier must
+either be the skos:notation (so every concept must have one), or the
+skos:prefLabel in one fixed language for all concepts. The only exception
+to this rule are filters, for instance to uri-encode the prefLabel/notation.
+
+=item *
+
+Empty strings as literal values are ignored. In most cases you can use
+C<undef> and C<""> interchangeably.
+
+=item *
+
+All notations have the same Datatype URI (this may be changed).
+
+=item *
+
+The range of all documentation properties (C<skos:note>, C<skos:example>,
+C<skos:scopeNote> etc.) is the plain literals instead of any resource.
+
+=item *
+
+I<...sure there are some more limitations...>
+
+=back
+
 =head1 METHODS
 
 =head2 new( [ %properties ] )
 
-Creates a new concept scheme with some given properties.
+Creates a new concept scheme with the following properties:
 
 =over 4
 
@@ -247,12 +246,12 @@ parameter are always included as C<< @prefix >> in the Turtle output.
 
 =item language
 
-Language tag of the default language.
+Language tag of the default language. By default set to C<en>.
 
 =item hierarchy
 
-Either C<tree> or C<multi> or C<none> (default). 
-At the moment only C<tree> is supported.
+Either C<tree> or C<multi> or the empty string for no hierarchy check
+(default). At the moment only C<tree> is supported.
 
 =item identity
 
@@ -267,7 +266,7 @@ Specifies how to encode concept labels. Possible values are C<pref>
 (C<skos:prefLabel>), which is the default value and implied if 
 C<< identify => 'label' >>, C<alt> (C<skos:altLabel>, 
 C<hidden> (C<skos:hiddenLabel>) and C<title> (C<dc:title>).
- 
+
 =item notation
 
 Specifies whether to check notations to be unique (C<unique>) and/or
@@ -281,7 +280,7 @@ C<a>, C<dc:title>, and C<skos:...> are not allowed but removed.
 
 =item description
 
-not supported yet
+not supported yet.
 
 =back
 
@@ -309,7 +308,7 @@ sub new {
         language    => ($arg{language} || "en"),  # TODO: check tag
         description => ($arg{description} || ""), # TODO: add
 
-        idfilter    => $arg{idfilter} || sub { $_[0]; }, # TODO: uri-escape
+        idescape    => $arg{idescape} || sub { $_[0]; }, # TODO: uri-escape
 
         identity    => ($arg{identity} || ""),
         label       => ($arg{label} || ""), # label type
@@ -422,8 +421,8 @@ sub _values {
 =head2 add_concept ( %properties )
 
 Adds a concept with given properties. Only the identifying property to be 
-used as concept id (notation or label) is mandatory. If there already is 
-a concept with the same id, both are merged.
+used as concept id (C<notation>, C<label>, C<identifier>, or C<id> ) is 
+mandatory. If there already is a concept with the same id, both are merged!
 
 Returns the id of the added or modfied concept.
 
@@ -562,70 +561,6 @@ sub top_concepts {
     }
 }
 
-=head2 add_hashref ( $hashref )
-
-experimental.
-
-=cut
-
-sub add_hashref {
-    my ($self, $hash) = @_;
-
-    my $base = $self->{base}; # may be ""
-
-    # ignores all but the following predicates
-    my %predicates = (
-        $NAMESPACES{rdf}.'type'      => 'a',
-        $NAMESPACES{dc}.'identifier' => 'id'
-    );
-
-    my @pnames = (
-        keys %NOTE_PROPERTIES, 
-        keys %RELATION_PROPERTIES, 
-        keys %LABEL_PROPERTIES, 'notation' );
-
-    foreach my $p (@pnames) {
-        $predicates{ $NAMESPACES{skos}.$p    } = $p;
-    }
-
-    foreach my $subject ( keys %$hash ) {
-        my $subj = $subject; 
-        next unless ($subj =~ s/^$base//);
-
-        # TODO: $self->{scheme} as subject
-
-        my %concept = (); #  => $subj );
-        $concept{notation} = $subj; # TODO: remove
-        my $is_concept = 0; # TODO: check
-
-        foreach my $predicate ( keys %{$hash->{$subject}} ) {
-            my $p = $predicates{ $predicate } || next;
-
-            foreach my $object ( @{ $hash->{$subject}->{$predicate} } ) {
-                my $obj;
-       
-                if ( $p =~ /^(narrower|broader)$/ ) {
-                    next unless $object->{type} eq 'uri';
-                    $obj = $object->{value};
-#print "$obj\n";
-                    next unless ($obj =~ s/^$base//);
-                    push @{$concept{$p}}, $obj; 
-                } elsif ( $p =~ /^(prefLabel)/ ) {
-                    $obj = $object->{value}; # TODO: language
-                    $concept{label} = $obj; # TODO: unique
-                } elsif ( $p eq 'definition' ) {
-                }
-
-# TODO: map
-#print "$subj $p\n";
-            }
-        }
-        if ( %concept ) {
-            $self->add_concept( %concept );
-        }
-    }
-}
-
 =head2 concept_id ( %properties )
 
 Returns the identifier of a concept with given notation and/or label.
@@ -646,7 +581,7 @@ sub concept_id {
 =head2 has_concept ( $id | %properties )
 
 Returns whether there is a concept of a given id. Instead of providing
-a specific concept id you can also use unique properties (C<notation>,
+a specific concept C<id> you can also use unique properties (C<notation>,
 C<label>, C<identifier>) depending on the scheme's settings.
 
 =cut
@@ -747,7 +682,7 @@ sub concept_identification {
         }
     }
 
-    $arg{id} = $self->{idfilter}->( $arg{id} );
+    $arg{id} = $self->{idescape}->( $arg{id} );
 
     if ( $self->{idregexp} ) {
         croak "identifier " . $arg{id} . " does not fit to pattern"
@@ -759,6 +694,70 @@ sub concept_identification {
     # TODO: check $arg{id} for well-formedness as URI part
 
     return \%arg;
+}
+
+=head2 add_hashref ( $hashref )
+
+experimental.
+
+=cut
+
+sub add_hashref {
+    my ($self, $hash) = @_;
+
+    my $base = $self->{base}; # may be ""
+
+    # ignores all but the following predicates
+    my %predicates = (
+        $NAMESPACES{rdf}.'type'      => 'a',
+        $NAMESPACES{dc}.'identifier' => 'id'
+    );
+
+    my @pnames = (
+        keys %NOTE_PROPERTIES, 
+        keys %RELATION_PROPERTIES, 
+        keys %LABEL_PROPERTIES, 'notation' );
+
+    foreach my $p (@pnames) {
+        $predicates{ $NAMESPACES{skos}.$p    } = $p;
+    }
+
+    foreach my $subject ( keys %$hash ) {
+        my $subj = $subject; 
+        next unless ($subj =~ s/^$base//);
+
+        # TODO: $self->{scheme} as subject
+
+        my %concept = (); #  => $subj );
+        $concept{notation} = $subj; # TODO: remove
+        my $is_concept = 0; # TODO: check
+
+        foreach my $predicate ( keys %{$hash->{$subject}} ) {
+            my $p = $predicates{ $predicate } || next;
+
+            foreach my $object ( @{ $hash->{$subject}->{$predicate} } ) {
+                my $obj;
+       
+                if ( $p =~ /^(narrower|broader)$/ ) {
+                    next unless $object->{type} eq 'uri';
+                    $obj = $object->{value};
+#print "$obj\n";
+                    next unless ($obj =~ s/^$base//);
+                    push @{$concept{$p}}, $obj; 
+                } elsif ( $p =~ /^(prefLabel)/ ) {
+                    $obj = $object->{value}; # TODO: language
+                    $concept{label} = $obj; # TODO: unique
+                } elsif ( $p eq 'definition' ) {
+                }
+
+# TODO: map
+#print "$subj $p\n";
+            }
+        }
+        if ( %concept ) {
+            $self->add_concept( %concept );
+        }
+    }
 }
 
 =head1 SERIALIZATION METHODS
@@ -1174,7 +1173,7 @@ Jakob Voss C<< <jakob.voss@gbv.de> >>
 
 =head1 LICENSE
 
-Copyright (C) 2010,2011 by Verbundzentrale Goettingen (VZG) and Jakob Voss
+Copyright (C) 2010, 2011 by Verbundzentrale Goettingen (VZG) and Jakob Voss
 
 This library is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself, either Perl version 5.8.8 or, at

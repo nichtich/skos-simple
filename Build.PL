@@ -13,6 +13,11 @@ my $builder = Module::Build->new(
     recommends         => { 'RDF::Trine' => '0.130' },
     add_to_cleanup     => [ 'SKOS::Simple-*' ],
     create_makefile_pl => 'traditional',
+    meta_merge => {
+        resources => {
+            repository => 'http://github.com/nichtich/skos-simple/'
+        }
+    },
 );
 
 $builder->create_build_script();

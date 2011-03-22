@@ -20,9 +20,11 @@ my @examples = qw(iconclass);
 
 foreach my $name (@examples) {
     diag("$name example");
-    my $skos = do "t/data/$name.pl";
+    my $skos = eval { require "t/data/$name.pl"; };
+    isa_ok( $skos, 'SKOS::Simple' ) or next;
     my $file = "t/data/$name.ttl";
     my $ttl = do { local ( @ARGV, $/ ) = $file; <> };
+    ok ( $skos ) &&
     is_rdf ($skos->turtle, 'turtle', $ttl, 'turtle', 'as expected: '.$file );
 }
 
