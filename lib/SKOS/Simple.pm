@@ -1,18 +1,11 @@
 package SKOS::Simple;
+#ABSTRACT: Create simple SKOS data with entailment
 
 use strict;
 use warnings;
 
-=head1 NAME
-
-SKOS::Simple - SKOS with entailment and without package dependencies
-
-=cut
-
 use Scalar::Util qw(blessed reftype);
 use Carp;
-
-our $VERSION = '0.0.9';
 
 =head1 DESCRIPTION
 
@@ -26,7 +19,7 @@ In contrast to other RDF-related modules, SKOS::Simple does not depend on
 any non-core Perl modules, so you can install it by just copying one file. 
 The module implements basic entailment rules of the SKOS standard without 
 the burden of a full RDF reasoning engine. Actually, you can use this 
-module without having to deal with details of RDF.
+module without having to deal with any details of RDF.
 
 The current version of this class is optimized form creating and serializing
 valid SKOS schemes, but not for reading and modifying them. A common use case
@@ -1171,20 +1164,5 @@ The SKOS ontology and its semantics is defined in
 L<http://www.w3.org/TR/skos-primer> and 
 L<http://www.w3.org/TR/skos-reference>. Turtle format
 is specified at http://www.w3.org/TeamSubmission/turtle/.
-
-=head1 AUTHOR
-
-Jakob Voss C<< <jakob.voss@gbv.de> >>
-
-=head1 LICENSE
-
-Copyright (C) 2010, 2011 by Verbundzentrale Goettingen (VZG) and Jakob Voss
-
-This library is free software; you can redistribute it and/or modify it
-under the same terms as Perl itself, either Perl version 5.8.8 or, at
-your option, any later version of Perl 5 you may have available.
-
-In addition you may fork this library under the terms of the 
-GNU Affero General Public License.
 
 =cut
