@@ -24,7 +24,7 @@ $skos = new SKOS::Simple(
 # TheSoz also has a classification that we ignore here:
 #   http://lod.gesis.org/thesoz/classification/
 
-$skos->add_concept(
+$skos->addConcept(
     # http://lod.gesis.org/thesoz/concept/10039266
     id => '10039266', 
     label => { 
@@ -43,7 +43,7 @@ $skos->add_concept(
     related => '10039265',
 );
 
-$skos->add_concept(
+$skos->addConcept(
     # http://lod.gesis.org/thesoz/concept/10039265
     id => '10039265',
     label => {
@@ -54,12 +54,10 @@ $skos->add_concept(
     }
 );
 
-print $skos->turtle;
+#print $skos->turtle;
 #print $skos->turtle ( top => 0 );
 
 $skos;
-
-
 
 # Mapping with ZBW:
 # exactMatch thesoz:10039265 zbw:13351-6

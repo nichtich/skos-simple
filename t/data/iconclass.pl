@@ -19,28 +19,28 @@ $skos = new SKOS::Simple
     void => 1
 ; 
 
-$skos->add_concept( 
+$skos->addConcept( 
     id => '49 M 9', label => 'public library',
     # + see also: 41A251
 );
-$skos->add_concept( id => '49M', label => 'production of printed matter, book-production' );
+$skos->addConcept( id => '49M', label => 'production of printed matter, book-production' );
 
 # add hierarchy
-$skos->add_concept( notation => '49 M 9', broader => '49M' );
-$skos->add_concept( id       => '49 M',   broader => '49', label => 'education, science and learning' );
-$skos->add_concept( id       => '49',     broader => '4',  label => 'Society, Civilization, Culture' );
+$skos->addConcept( notation => '49 M 9', broader => '49M' );
+$skos->addConcept( id       => '49 M',   broader => '49', label => 'education, science and learning' );
+$skos->addConcept( id       => '49',     broader => '4',  label => 'Society, Civilization, Culture' );
 
 # notation with special characters should be escaped
-$skos->add_concept( 
+$skos->addConcept( 
     id => '49 M 9 (+8)', 
     label => 'public library (+ plagiary ~ science)',
     broader => '49M9' );
 
 # this should not be allowed
-eval { $skos->add_concept( notation => '49 M', broader => '4' ); };
+eval { $skos->addConcept( notation => '49 M', broader => '4' ); };
 ok( $@, 'tree hierarchy check' );
 
-eval { $skos->add_concept( notation => '49J' ); };
+eval { $skos->addConcept( notation => '49J' ); };
 ok( $@, 'uri pattern check' );
 
 $skos;

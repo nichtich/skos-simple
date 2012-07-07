@@ -39,7 +39,7 @@ like( $skos->turtle, qr/dc:title\s"Hola"\@es/, 'title with default language' );
 ### check properties
 my $prop = { 'a' => '<x:y>', 'skos:subject' => 'y', 'f:oo' => 'b:ar' };
 $skos = SKOS::Simple->new( properties => $prop );
-is( $skos->scheme_turtle, "<> a skos:ConceptScheme ;\n    f:oo b:ar .\n", 'properties' );
+is( $skos->turtleScheme, "<> a skos:ConceptScheme ;\n    f:oo b:ar .\n", 'properties' );
 
 
 sub check_ns {

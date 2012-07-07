@@ -5,6 +5,7 @@ use strict;
 use warnings;
 
 use Scalar::Util qw(blessed reftype);
+use Turtle::Writer;
 use Carp;
 
 =head1 DESCRIPTION
@@ -36,19 +37,15 @@ them with general RDF and SKOS tools.
       hierarchy => 'tree' # check classification constraints
   );
 
-  $skos->add_concept( pref => { en => 'foo', ru => 'baz' } );
-  $skos->add_concept( notation => '42.X-23' );
+  $skos->addConcept( pref => { en => 'foo', ru => 'baz' } );
+  $skos->addConcept( notation => '42.X-23' );
 
   print $skos->turtle;
 
 =cut
 
 use base 'Exporter';
-our %EXPORT_TAGS = ( 
-    turtle => [qw(turtle_literal turtle_literal_list turtle_statement turtle_uri)], 
-    all    => [qw(turtle_literal turtle_literal_list turtle_statement turtle_uri skos)]
-);
-our @EXPORT_OK = @{$EXPORT_TAGS{all}};
+our @EXPORT_OK = qw(skos);
 
 our %NAMESPACES = (
    rdf     => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
@@ -74,7 +71,7 @@ SKOS specification. Additional constraints are marked by numbers like B<[Cxx]>.
 
 Instances of C<skos:Concept> B<[S1]> are not represented as objects but as 
 parts of a SKOS::Simple object, so every Concepts must belong to a Concept 
-Scheme B<[C1]>. You can attach Concepts to a scheme with L</add_concept>.
+Scheme B<[C1]>. You can attach Concepts to a scheme with L</addConcept>.
 
 =item L<Concept Schemes|http://www.w3.org/TR/skos-reference/#notations>
 
@@ -420,7 +417,7 @@ sub _values {
     return @values;
 }
 
-=head2 add_concept ( %properties )
+=head2 addConcept ( %properties )
 
 Adds a concept with given properties. Only the identifying property to be 
 used as concept id (C<notation>, C<label>, C<identifier>, or C<id> ) is 
@@ -430,11 +427,11 @@ Returns the id of the added or modfied concept.
 
 =cut
 
-sub add_concept {
+sub addConcept {
     my $self = shift;
 
     # ensures we have an 'id' and 'label' is a hashref
-    my $arg = $self->concept_identification( @_ );
+    my $arg = $self->conceptentification( @_ );
     my $id = $arg->{id};
     my $lang = $self->{language};
 
@@ -505,7 +502,7 @@ sub add_concept {
     # add inverse relations
     foreach my $i (@related) { 
         next if $concept->{related}->{$i};
-        $self->add_concept( related => $id, _nocheck => 1, id => $i ) 
+        $self->addConcept( related => $id, _nocheck => 1, id => $i ) 
             unless $nocheck;
         $concept->{related}->{$i} = 1;
     }
@@ -516,13 +513,13 @@ sub add_concept {
                 if %{$concept->{broader}};
         } # TODO: if 'multi[tree]': detect loops
         
-        $self->add_concept( narrower => $id, _nocheck => 1, id => $i ) 
+        $self->addConcept( narrower => $id, _nocheck => 1, id => $i ) 
             unless $nocheck;
         $concept->{broader}->{$i} = 1;
     }
     foreach my $i (@narrower) {
         next if $concept->{narrower}->{$i};
-        $self->add_concept( broader => $id, _nocheck => 1, id => $i ) 
+        $self->addConcept( broader => $id, _nocheck => 1, id => $i ) 
             unless $nocheck;
         $concept->{narrower}->{$i} = 1;
     }
@@ -530,7 +527,7 @@ sub add_concept {
     return $id;
 }
 
-=head2 top_concepts ( [ @ids ] )
+=head2 topConcepts ( [ @ids ] )
 
 Marks one or more concepts as top concepts. The given concepts must 
 already exist and must not have any broader concepts. Without parameters,
@@ -542,7 +539,7 @@ to all concepts without broader concepts, provide C<undef> as only argument.
 
 =cut
 
-sub top_concepts {
+sub topConcepts {
     my $self = shift;
     unless ( @_ ) {
         return keys %{ $self->{top} } if %{ $self->{top} };
@@ -563,7 +560,7 @@ sub top_concepts {
     }
 }
 
-=head2 concept_id ( %properties )
+=head2 concept ( %properties )
 
 Returns the identifier of a concept with given notation and/or label.
 It is not checked whether the given concept exists in this scheme.
@@ -571,16 +568,16 @@ Returns either a string or an empty string if no identifier is given.
 
 =cut
 
-sub concept_id {
+sub concept {
     my $id = "";
     eval {
-        my $arg = shift->concept_identification( @_ );
+        my $arg = shift->conceptentification( @_ );
         $id = $arg->{id};
     };
     return $id;
 }
 
-=head2 has_concept ( $id | %properties )
+=head2 hasConcept ( $id | %properties )
 
 Returns whether there is a concept of a given id. Instead of providing
 a specific concept C<id> you can also use unique properties (C<notation>,
@@ -588,9 +585,9 @@ C<label>, C<identifier>) depending on the scheme's settings.
 
 =cut
 
-sub has_concept {
+sub hasConcept {
     my $self = shift;
-    my $id = (@_ == 1) ? $_[0] : $self->concept_id( @_ );
+    my $id = (@_ == 1) ? $_[0] : $self->concept( @_ );
     return exists $self->{concepts}->{$id}
         if defined $id and $id ne "";
 
@@ -619,7 +616,7 @@ sub size {
     return scalar keys %{ $self->{concepts} };
 }
 
-=head2 concept_identification ( %properties )
+=head2 conceptentification ( %properties )
 
 Checks and possibly expands some given concept properties to ensure that
 there is a valid concept id. Returns a hashref that contains the concept
@@ -629,7 +626,7 @@ C<identifier>, C<id>.
 
 =cut
 
-sub concept_identification {
+sub conceptentification {
     my ($self, %arg) = @_;
 
     my $idtype    = $self->{identity};
@@ -701,13 +698,13 @@ sub concept_identification {
     return \%arg;
 }
 
-=head2 add_hashref ( $hashref )
+=head2 addHashref ( $hashref )
 
 experimental.
 
 =cut
 
-sub add_hashref {
+sub addHashref {
     my ($self, $hash) = @_;
 
     my $base = $self->{base}; # may be ""
@@ -760,7 +757,7 @@ sub add_hashref {
             }
         }
         if ( %concept ) {
-            $self->add_concept( %concept );
+            $self->addConcept( %concept );
         }
     }
 }
@@ -779,12 +776,12 @@ A later version may also support 'hashref' format for serializing.
 =head2 turtle ( [ %options ] )
 
 Returns a full Turtle serialization of this concept scheme.
-The return value is equivalent to calling C<namespaces_turtle>,
-C<base_turtle>, C<scheme_turtle>, and C<concepts_turtle>.
+The return value is equivalent to calling C<turtleNamespaces>,
+C<turtleBase>, C<turtleScheme>, and C<turtleConcepts>.
 
 The parameter C<< lean => 1 >> enables a lean serialization, which 
 does not include infereable RDF statements. Other parameters are
-passed to C<scheme_turtle> and C<concepts_turtle> as well.
+passed to C<turtleScheme> and C<turtleConcepts> as well.
 
 =cut
 
@@ -792,19 +789,19 @@ sub turtle {
     my ($self,%opt) = @_;
 
     return join( "\n", 
-        $self->namespaces_turtle,
-        $self->base_turtle ,
-        $self->scheme_turtle( %opt ) ,
-        $self->concepts_turtle( %opt ) );
+        $self->turtleNamespaces,
+        $self->turtleBase ,
+        $self->turtleScheme( %opt ) ,
+        $self->turtleConcepts( %opt ) );
 }
 
-=head2 namespaces_turtle
+=head2 turtleNamespaces
 
 Returns Turtle syntax namespace declarations for this scheme.
 
 =cut
 
-sub namespaces_turtle {
+sub turtleNamespaces {
     my $self = shift;
 
     if ( $self->{uses_dc} and not $self->{namespaces}->{dc} ) {
@@ -819,14 +816,14 @@ sub namespaces_turtle {
     return join("\n", @lines) . "\n";
 }
 
-=head2 base_turtle
+=head2 turtleBase
 
 Returns a Turtle URI base declaration for this scheme.
 An empty string is returned if no URI base is set.
 
 =cut
 
-sub base_turtle {
+sub turtleBase {
     my $self = shift;
 
     return "" if $self->{base} eq "";
@@ -834,7 +831,7 @@ sub base_turtle {
 }
 
 
-=head2 scheme_turtle ( [ top => 0 ] )
+=head2 turtleScheme ( [ top => 0 ] )
 
 Returns RDF statements about the concept scheme in Turtle syntax.
 Details about concepts or namespace/base declarations are not included.
@@ -843,22 +840,22 @@ serializing the C<skos:hasTopConcept> property.
 
 =cut
 
-sub scheme_turtle {
+sub turtleScheme {
     my ($self,%opt) = @_;
     $opt{top} = 1 unless exists $opt{top};
 
     # note that lean => 1 does not imply top => 0 !
     if ( $opt{top} ) { 
-        my @top = $self->top_concepts();
+        my @top = $self->topConcepts();
         $self->{prop}->{'skos:hasTopConcept'} = [ map { "<$_>" } @top ];
     } else {
         delete $self->{prop}->{'skos:hasTopConcept'}
     }
 
-    return $self->turtle_statement( "<" . $self->{scheme} . ">", %{$self->{prop}} );
+    return turtle_statement( "<" . $self->{scheme} . ">", %{$self->{prop}} );
 }
 
-=head2 concept_turtle ( $id [, %options ] )
+=head2 turtleConcept ( $id [, %options ] )
 
 Returns a concept in Turtle syntax. With option C<< top => 0 >> you can disable
 serializing the C<skos:topConceptOf> property. By default, each concept is
@@ -870,7 +867,7 @@ although the former can be derived as super-property of the latter.
 
 =cut
 
-sub concept_turtle {
+sub turtleConcept {
     my ($self,$id,%opt) = @_;
     $opt{top} = 1 unless exists $opt{top};
     $opt{top} = 0 if $opt{lean};
@@ -924,31 +921,25 @@ sub concept_turtle {
         $stm{"skos:$name"} = turtle_literal_list( $c->{$name} );
     }
 
-    return $self->turtle_statement( "<$id>", %stm );
+    return turtle_statement( "<$id>", %stm );
 }
 
-=head2 concepts_turtle ( [ %options ] )
+=head2 turtleConcepts ( [ %options ] )
 
 Returns all concepts in Turtle syntax.
 
 =cut
 
-sub concepts_turtle {
+sub turtleConcepts {
     my ($self,%opt) = @_;
     delete $opt{id};
 
     return join( "\n", 
-        map { $self->concept_turtle( $_, %opt ) } 
+        map { $self->turtleConcept( $_, %opt ) } 
         keys %{ $self->{concepts} } );
 }
 
 =head1 EXPORTABLE FUNCTIONS
-
-The following functions can be exported on request. The export tags
-C<:turtle> and C<:all> can be used to export all C<turtle_...> functions
-or all functions. Note that C<turtle_...> functions do not implement a full
-Turtle serializer because they don't check whether the URIs, QNames, and/or
-language tags are valid.
 
 =head2 skos
 
@@ -958,137 +949,6 @@ This is just a shortcut for C<< SKOS::Simple->new >>.
 
 sub skos { 
     SKOS::Simple->new(@_)
-}
-
-=head2 turtle_statement ( $subject, $predicate => $object [, ... ] )
-
-Returns a (set of) RDF statements in Turtle syntax. Subject and predicate
-parameters must be strings. Object parameters must either be strings or
-arrays of strings. This function strips undefined values and empty strings,
-but it does not further check or validate parameter values.
-
-The followinge example shows some methods how you can pass statements:
-
-  print turtle_statement( 
-    "<$uri>",
-      "a" => "<http://purl.org/ontology/bibo/Document>",
-      "dc:creator" => [ 
-          '"Terry Winograd"', 
-          '"Fernando Flores"' 
-      ],
-      "dc:date" => turtle_literal( "1987", type => "xs:gYear" ),
-      "dc:title" =>
-          { en => "Understanding Computers and Cognition" },
-      "dc:decription" => undef  # will be ignored
-  );
-
-=cut
-
-sub turtle_statement {
-    shift if blessed($_[0]);
-    my ($subject, %statements) = @_;
-
-    my @s = grep { defined $_ } map {
-        my ($p,$o) = ($_,$statements{$_});
-        if ( ref($o) ) {
-           if (reftype($o) eq 'HASH') {
-               $o = [ map { turtle_literal($o->{$_},$_) } keys %$o ];
-           }
-           if (reftype($o) eq 'ARRAY') {
-               $o = join(", ", @$o) if ref($o);
-           } else { 
-               $o = undef; 
-           }
-        }
-        (defined $o and $o ne '') ? "$p $o" : undef;
-    } keys %statements;
-
-    return "" unless @s;
-
-    return "$subject " . join(" ;\n" , shift @s, map { "    $_" } @s) . " .\n";
-}
-
-=head2 turtle_literal ( $string [ [ lang => ] $language | [ type => ] $datatype ] )
-
-Returns a literal string escaped in Turtle syntax. You can optionally provide
-either a language or a full datatype URI (but their values are not validated).
-Returns the empty string instead of a Turtle value, if C<$string> is C<undef>
-or the empty string.
-
-=cut
-
-sub turtle_literal {
-    shift if blessed($_[0]);
-    my $value = shift;
-    my %opt;
-
-    if ( ref( $value ) and ref($value) eq 'ARRAY') {
-        return join( ", ", map { turtle_literal( $_, @_ ) } @$value );
-    }
-
-    if ( @_ % 2 ) {
-        my $v = shift;
-        %opt = ($v =~ /^[a-zA-Z0-9-]+$/) ? ( lang => $v ) : ( type => $v ); 
-    } else {
-
-        %opt = @_;
-        croak "Literal values cannot have both language and datatype"
-            if ($opt{lang} and $opt{type});
-    }
-
-    return "" if not defined $value or $value eq '';
-
-    my %ESCAPED = ( "\t" => 't', "\n" => 'n', 
-        "\r" => 'r', "\"" => '"', "\\" => '\\' );
-    $value =~ s/([\t\n\r\"\\])/\\$ESCAPED{$1}/sg;
-
-    $value = qq("$value");
-
-    if ($opt{lang}) {
-        return $value.'@'.$opt{lang};
-    } elsif ($opt{type}) {
-        return $value.'^^<'.$opt{type} .'>';
-    }
-
-    return $value;
-}
-
-=head2 turtle_uri ( $uri )
-
-Returns an URI in Turtle syntax, that is C<< "<$uri>" >>. Returns the 
-empty string, if C<$uri> is C<undef>, but C<< <> >> if C<$uri> is the
-empty string. In most cases you better directly write C<< "<$uri>" >>.
-
-=cut
-
-sub turtle_uri {
-    shift if blessed($_[0]);
-    my $value = shift;
-    return "" unless defined $value;
-    # my $value = URI->new( encode_utf8( $value ) )->canonical;
-    return "<$value>";
-}
-
-=head2 turtle_literal_list ( $literal | @array_of_literals | { $language => $literal } )
-
-Returns a list of literal strings in Turtle syntax.
-
-=cut
-
-sub turtle_literal_list {
-    shift if blessed($_[0]);
- 
-    if ( ref($_[0]) and ref($_[0]) eq 'HASH') {
-        my $hash = $_[0];
-        return join( ", ", 
-            map { turtle_literal( $hash->{$_}, lang => $_ ) } 
-            keys %$hash
-        );
-    } elsif ( @_ > 1 ) {
-        return turtle_literal( \@_ );
-    } else {
-        return turtle_literal( $_[0] );
-    }
 }
 
 =head2 is_uri ( $uri )
@@ -1143,7 +1003,6 @@ sub is_uri{
     }
     
     return $out;
-    
 }
 
 =head2 uri_or_empty ( $uri )
