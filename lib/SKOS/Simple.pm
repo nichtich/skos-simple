@@ -1024,4 +1024,6 @@ L<http://www.w3.org/TR/skos-primer> and
 L<http://www.w3.org/TR/skos-reference>. Turtle format
 is specified at http://www.w3.org/TeamSubmission/turtle/.
 
+See also L<Biblio::Thesaurus> for a similar module.
+
 =cut
