@@ -50,7 +50,6 @@ our @EXPORT_OK = qw(skos);
 our %NAMESPACES = (
    rdf     => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
    skos    => 'http://www.w3.org/2004/02/skos/core#',
-   dc      => 'http://purl.org/dc/elements/1.1/',
    foaf    => 'http://xmlns.com/foaf/0.1/',
    void    => 'http://rdfs.org/ns/void#',
    dct     => 'http://purl.org/dc/terms/',
@@ -90,7 +89,7 @@ if you do not use a C<scheme> but a C<base> parameter.
 
 The label types C<skos:prefLabel>, C<skos:altLabel>, and C<skos:hiddenLabel>
 are supported. In addition this module supports the label properties
-C<dc:title> and C<dc:identifier>, which are not explicitly included in the 
+C<dct:title> and C<dct:identifier>, which are not explicitly included in the 
 SKOS reference.
 
 C<rdfs:label> as super-property of C<skos:prefLabel>, C<skos:altLabel>, 
@@ -109,7 +108,7 @@ our %LABEL_TYPES = (
     pref   => 'skos:prefLabel',   # TODO: sub-property of rdfs:label
     alt    => 'skos:altLabel',    # dito
     hidden => 'skos:hiddenLabel', # dito
-    title  => 'dc:title'
+    title  => 'dct:title'
 );
 
 =item L<Semantic Relations|http://www.w3.org/TR/skos-reference/#semantic-relations>
@@ -155,7 +154,7 @@ our %MAPPING_PROPERTIES = map { $_ => 1 } qw(mappingRelation
     closeMatch exactMatch broadMatch narrowMatch relatedMatch);
 
 # dublin core elements
-our %DC_PROPERTIES = map { $_ => "dc:$_" } 
+our %DC_PROPERTIES = map { $_ => "dct:$_" } 
     qw(contributor coverage creator date description format identifier 
        language publisher relation rights source subject title type);
 
@@ -247,7 +246,7 @@ Either C<tree> or C<thesaurus> or the empty string for no hierarchy check
 
 Specifies which property is used as concept identifier. Possible
 values are C<label> (C<skos:prefLabel>), C<notation> (C<skos:notation>,
-and C<identifier> (C<dc:identifier>). If no value is given, you must
+and C<identifier> (C<dct:identifier>). If no value is given, you must
 either specify C<label> or C<notation> as C<unique>.
 
 =item label
@@ -255,7 +254,7 @@ either specify C<label> or C<notation> as C<unique>.
 Specifies how to encode concept labels. Possible values are C<pref>
 (C<skos:prefLabel>), which is the default value and implied if 
 C<< identify => 'label' >>, C<alt> (C<skos:altLabel>, 
-C<hidden> (C<skos:hiddenLabel>) and C<title> (C<dc:title>).
+C<hidden> (C<skos:hiddenLabel>) and C<title> (C<dct:title>).
 
 =item notation
 
@@ -266,7 +265,7 @@ implies C<< notation => 'unique' >>.
 =item properties
 
 Additional properties as structured Turtle. Triples with predicates
-C<a>, C<dc:title>, and C<skos:...> are not allowed but removed.
+C<a>, C<dct:title>, and C<skos:...> are not allowed but removed.
 
 =item description
 
@@ -347,8 +346,8 @@ sub new {
     $self->{namespaces}->{void} = $NAMESPACES{void}
         if ( $arg{void} and not $self->{namespaces}->{void} );
 
-    $self->{namespaces}->{dc} = $NAMESPACES{dc}
-        if ( ($self->{title} || $self->{description}) && not $self->{namespaces}->{dc});
+    $self->{namespaces}->{dct} = $NAMESPACES{dct}
+        if ( ($self->{title} || $self->{description}) && not $self->{namespaces}->{dct});
 
     # Add default language, if title without language given
     my $lang = $self->{language};
@@ -367,9 +366,10 @@ sub new {
     }
 
 	if ( $arg{license} ) {
-		$self->{prop}->{'dct:license'} = map { 
+		($self->{prop}->{'dct:license'}) = map { 
 			$_ =~ qr{^https?://} ? turtle_uri($_) : turtle_literal($_) 
-		} $arg{license};
+		} ($arg{license});
+        $self->{uses_dc} = 1;
 	}
 
     if ( $arg{void} ) {
@@ -400,7 +400,7 @@ sub new {
         }
     }
 
-    $self->{prop}->{'dc:title'} = 
+    $self->{prop}->{'dct:title'} = 
         $self->{title} eq '' ? '' : turtle_literal_list( $self->{title} );
 
     my $page = (delete $arg{page} || "");
@@ -724,7 +724,7 @@ sub addHashref {
     # ignores all but the following predicates
     my %predicates = (
         $NAMESPACES{rdf}.'type'      => 'a',
-        $NAMESPACES{dc}.'identifier' => 'id'
+        $NAMESPACES{dct}.'identifier' => 'id'
     );
 
     my @pnames = (
@@ -817,8 +817,8 @@ Returns Turtle syntax namespace declarations for this scheme.
 sub turtleNamespaces {
     my $self = shift;
 
-    if ( $self->{uses_dc} and not $self->{namespaces}->{dc} ) {
-        $self->{namespaces}->{dc} = $NAMESPACES{dc};
+    if ( $self->{uses_dc} and not $self->{namespaces}->{dct} ) {
+        $self->{namespaces}->{dct} = $NAMESPACES{dct};
     }
 
     my @lines;
@@ -925,7 +925,7 @@ sub turtleConcept {
     }
 
     if ( defined $c->{identifier} and $c->{identifier} ne "" ) {
-        $stm{'dc:identifier'} = turtle_literal( $c->{identifier} );
+        $stm{'dct:identifier'} = turtle_literal( $c->{identifier} );
     }
 
     # TODO: S17 - infer skos:note only if requested

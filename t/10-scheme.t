@@ -21,20 +21,20 @@ $ns{skos} = 'http://www.w3.org/2008/05/skos#'; # override
 $skos = SKOS::Simple->new( namespaces => \%ns );
 check_ns( $skos, %ns );
 
-$ns{dc} = 'http://purl.org/dc/elements/1.1/';
+$ns{dct} = 'http://purl.org/dc/terms/';
 $skos = SKOS::Simple->new( namespaces => \%ns, title => 'Hello' );
 check_ns( $skos, %ns );
 
 ### check title
-like( $skos->turtle, qr/dc:title\s"Hello"/, 'simple title' );
+like( $skos->turtle, qr/dct:title\s"Hello"/, 'simple title' );
 
 $skos = SKOS::Simple->new( title => { en => 'X', fr => 'Y' } );
 like( $skos->turtle, 
-    qr/dc:title\s("X"\@en, "Y"\@fr|"Y"\@fr, "X"\@en)/,
+    qr/dct:title\s("X"\@en, "Y"\@fr|"Y"\@fr, "X"\@en)/,
     'one title per language' );
 
 $skos = SKOS::Simple->new( title => 'Hola', language => 'es' );
-like( $skos->turtle, qr/dc:title\s"Hola"\@es/, 'title with default language' );
+like( $skos->turtle, qr/dct:title\s"Hola"\@es/, 'title with default language' );
 
 ### check properties
 my $prop = { 'a' => '<x:y>', 'skos:subject' => 'y', 'f:oo' => 'b:ar' };
