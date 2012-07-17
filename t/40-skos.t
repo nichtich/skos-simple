@@ -63,9 +63,15 @@ is ( $skos->concept( label => 'foo' ), 'foo' );
 is ( $skos->concept( notation => 'x', label => 'bar' ), 'bar' );
 is ( $skos->concept( notation => 'x' ), '' );
 
-
 my $id = $skos->addConcept( label => 'hi' ); #{ 'de' => $label }; 
 is ( $id, 'hi' );
+
+# Mapping properties
+$skos->addConcept( label => 'hi', closeMatch => 'http://example.org/foo' );
+use Data::Dumper;
+print Dumper($skos);
+print $skos->turtle;
+
 #print $skos->concepts;
 
 __END__

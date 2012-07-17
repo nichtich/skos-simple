@@ -366,7 +366,11 @@ sub new {
         $self->{idpattern} = "^$basepattern$pattern\$";
     }
 
-    # TODO: license (dct:license) 
+	if ( $arg{license} ) {
+		$self->{prop}->{'dct:license'} = map { 
+			$_ =~ qr{^https?://} ? turtle_uri($_) : turtle_literal($_) 
+		} $arg{license};
+	}
 
     if ( $arg{void} ) {
         $self->{void} = 1; # TODO: document this
@@ -522,6 +526,14 @@ sub addConcept {
         $self->addConcept( broader => $id, _nocheck => 1, id => $i ) 
             unless $nocheck;
         $concept->{narrower}->{$i} = 1;
+    }
+
+    # add mapping properties
+    foreach my $name ( keys %MAPPING_PROPERTIES ) {
+        my @values = _values( delete $arg->{$name} );
+        if ( @values ) {
+            push @{ $concept->{$name} }, @values;
+        }
     }
 
     return $id;
@@ -717,6 +729,7 @@ sub addHashref {
 
     my @pnames = (
         keys %NOTE_PROPERTIES, 
+        keys %MAPPING_PROPERTIES, # FIXME 
         keys %RELATION_PROPERTIES, 
         keys %LABEL_PROPERTIES, 'notation' );
 
@@ -919,6 +932,13 @@ sub turtleConcept {
     foreach my $name ( keys %NOTE_PROPERTIES ) {
         next unless $c->{$name};
         $stm{"skos:$name"} = turtle_literal_list( $c->{$name} );
+    }
+
+    foreach my $name ( keys %MAPPING_PROPERTIES ) {
+		my $l = $c->{$name};
+		next unless $l;
+		$l = ref $l ? $l : [$l];
+        $stm{"skos:$name"} = join (',', map { turtle_uri($_) } @$l);
     }
 
     return turtle_statement( "<$id>", %stm );
