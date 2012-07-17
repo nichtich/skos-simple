@@ -68,9 +68,7 @@ is ( $id, 'hi' );
 
 # Mapping properties
 $skos->addConcept( label => 'hi', closeMatch => 'http://example.org/foo' );
-use Data::Dumper;
-print Dumper($skos);
-print $skos->turtle;
+like $skos->turtle, qr{skos:closeMatch <http://example.org/foo>}m, 'closeMatch';
 
 #print $skos->concepts;
 
